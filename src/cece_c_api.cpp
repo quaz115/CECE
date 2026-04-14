@@ -18,7 +18,6 @@ static cece::CeceConfig* get_config() {
     return config_ptr;
 }
 
-
 extern "C" {
 
 size_t cece_get_met_registry_count() {
