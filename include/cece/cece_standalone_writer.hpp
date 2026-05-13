@@ -17,14 +17,17 @@ class CeceStandaloneWriter {
     explicit CeceStandaloneWriter(const CeceOutputConfig& config);
     ~CeceStandaloneWriter();
 
+    CeceStandaloneWriter(const CeceStandaloneWriter&) = delete;
+    CeceStandaloneWriter& operator=(const CeceStandaloneWriter&) = delete;
+    CeceStandaloneWriter(CeceStandaloneWriter&&) = delete;
+    CeceStandaloneWriter& operator=(CeceStandaloneWriter&&) = delete;
+
     int Initialize(const std::string& start_time_iso8601, int nx, int ny, int nz);
 
-    int InitializeWithCoords(const std::string& start_time_iso8601, int nx, int ny, int nz,
-                             const std::vector<double>& lon_coords,
+    int InitializeWithCoords(const std::string& start_time_iso8601, int nx, int ny, int nz, const std::vector<double>& lon_coords,
                              const std::vector<double>& lat_coords);
 
-    int WriteTimeStep(const std::unordered_map<std::string, DualView3D>& export_fields,
-                      double time_seconds_since_start, int step_index);
+    int WriteTimeStep(const std::unordered_map<std::string, DualView3D>& export_fields, double time_seconds_since_start, int step_index);
 
     void Finalize();
 

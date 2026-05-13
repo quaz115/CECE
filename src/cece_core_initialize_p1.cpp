@@ -23,7 +23,9 @@
  */
 
 #include <Kokkos_Core.hpp>
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
@@ -85,9 +87,15 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
 #ifdef KOKKOS_ENABLE_OPENMP
         const char* num_threads = std::getenv("OMP_NUM_THREADS");
         if (num_threads != nullptr) {
-            int threads = std::atoi(num_threads);
-            if (threads > 0) {
-                args.set_num_threads(threads);
+            char* end;
+            long threads = std::strtol(num_threads, &end, 10);
+            if (end != num_threads && *end == '\0' && threads > 0) {
+                if (threads > std::numeric_limits<int>::max()) {
+                    std::cout << "INFO: OMP_NUM_THREADS value " << threads << " exceeds INT_MAX; "
+                              << "clamping to " << std::numeric_limits<int>::max() << std::endl;
+                    threads = std::numeric_limits<int>::max();
+                }
+                args.set_num_threads(static_cast<int>(threads));
                 std::cout << "INFO: Setting OpenMP threads to " << threads << std::endl;
             }
         } else {
@@ -100,24 +108,35 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
 #ifdef KOKKOS_ENABLE_CUDA
         const char* device_id = std::getenv("CECE_DEVICE_ID");
         if (device_id != nullptr) {
-            int dev_id = std::atoi(device_id);
-            if (dev_id >= 0) {
-                args.set_device_id(dev_id);
-                std::cout << "INFO: Setting CUDA device ID to " << dev_id << std::endl;
+            char* end;
+            long dev_id = std::strtol(device_id, &end, 10);
+            if (end != device_id && *end == '\0' && dev_id >= 0) {
+                if (dev_id > std::numeric_limits<int>::max()) {
+                    std::cout << "WARNING: CECE_DEVICE_ID value " << dev_id << " exceeds INT_MAX - "
+                              << "using default CUDA device (0)" << std::endl;
+                } else {
+                    args.set_device_id(static_cast<int>(dev_id));
+                    std::cout << "INFO: Setting CUDA device ID to " << dev_id << std::endl;
+                }
             }
         } else {
-            std::cout << "INFO: CECE_DEVICE_ID not set - using default CUDA device (0)"
-                      << std::endl;
+            std::cout << "INFO: CECE_DEVICE_ID not set - using default CUDA device (0)" << std::endl;
         }
 #endif
 
 #ifdef KOKKOS_ENABLE_HIP
         const char* device_id = std::getenv("CECE_DEVICE_ID");
         if (device_id != nullptr) {
-            int dev_id = std::atoi(device_id);
-            if (dev_id >= 0) {
-                args.set_device_id(dev_id);
-                std::cout << "INFO: Setting HIP device ID to " << dev_id << std::endl;
+            char* end;
+            long dev_id = std::strtol(device_id, &end, 10);
+            if (end != device_id && *end == '\0' && dev_id >= 0) {
+                if (dev_id > std::numeric_limits<int>::max()) {
+                    std::cout << "WARNING: CECE_DEVICE_ID value " << dev_id << " exceeds INT_MAX - "
+                              << "using default HIP device (0)" << std::endl;
+                } else {
+                    args.set_device_id(static_cast<int>(dev_id));
+                    std::cout << "INFO: Setting HIP device ID to " << dev_id << std::endl;
+                }
             }
         } else {
             std::cout << "INFO: CECE_DEVICE_ID not set - using default HIP device (0)" << std::endl;
@@ -142,12 +161,10 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
         Kokkos::initialize(args);
         kokkos_initialized_here = true;
         std::cout << "INFO: Kokkos initialized successfully" << std::endl;
-        std::cout << "INFO: Default execution space: " << Kokkos::DefaultExecutionSpace::name()
-                  << std::endl;
+        std::cout << "INFO: Default execution space: " << Kokkos::DefaultExecutionSpace::name() << std::endl;
     } else {
         std::cout << "INFO: Kokkos already initialized - using existing instance" << std::endl;
-        std::cout << "INFO: Default execution space: " << Kokkos::DefaultExecutionSpace::name()
-                  << std::endl;
+        std::cout << "INFO: Default execution space: " << Kokkos::DefaultExecutionSpace::name() << std::endl;
     }
 
     // 2. Parse YAML configuration
@@ -158,13 +175,10 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
     try {
         config = cece::ParseConfig(config_path);
         std::cout << "INFO: Configuration parsed successfully" << std::endl;
-        std::cout << "INFO: Found " << config.species_layers.size() << " emission species"
-                  << std::endl;
-        std::cout << "INFO: Found " << config.physics_schemes.size() << " physics schemes"
-                  << std::endl;
+        std::cout << "INFO: Found " << config.species_layers.size() << " emission species" << std::endl;
+        std::cout << "INFO: Found " << config.physics_schemes.size() << " physics schemes" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "ERROR in cece_core_initialize_p1: Failed to parse cece_config.yaml: "
-                  << e.what() << std::endl;
+        std::cerr << "ERROR in cece_core_initialize_p1: Failed to parse cece_config.yaml: " << e.what() << std::endl;
         if (rc != nullptr) {
             *rc = -1;
         }
@@ -174,8 +188,7 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
         }
         return;
     } catch (...) {
-        std::cerr << "ERROR in cece_core_initialize_p1: Unknown error parsing cece_config.yaml"
-                  << std::endl;
+        std::cerr << "ERROR in cece_core_initialize_p1: Unknown error parsing cece_config.yaml" << std::endl;
         if (rc != nullptr) {
             *rc = -1;
         }
@@ -208,8 +221,7 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
         }
     }
     internal_data->unique_input_fields.assign(unique_fields.begin(), unique_fields.end());
-    std::cout << "INFO: Found " << internal_data->unique_input_fields.size()
-              << " unique input fields required" << std::endl;
+    std::cout << "INFO: Found " << internal_data->unique_input_fields.size() << " unique input fields required" << std::endl;
 
     // 4. Initialize PhysicsFactory and instantiate all physics schemes
     std::cout << "INFO: Initializing physics schemes" << std::endl;
@@ -219,8 +231,7 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
             auto scheme = cece::PhysicsFactory::CreateScheme(scheme_config);
 
             if (scheme == nullptr) {
-                std::cerr << "ERROR: Failed to create physics scheme '" << scheme_config.name
-                          << "' - scheme not registered" << std::endl;
+                std::cerr << "ERROR: Failed to create physics scheme '" << scheme_config.name << "' - scheme not registered" << std::endl;
                 if (rc != nullptr) {
                     *rc = -1;
                 }
@@ -238,11 +249,9 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
             scheme->Initialize(scheme_config.options, nullptr);
 
             internal_data->active_schemes.push_back(std::move(scheme));
-            std::cout << "INFO: Successfully initialized physics scheme: " << scheme_config.name
-                      << std::endl;
+            std::cout << "INFO: Successfully initialized physics scheme: " << scheme_config.name << std::endl;
         } catch (const std::exception& e) {
-            std::cerr << "ERROR: Failed to initialize physics scheme '" << scheme_config.name
-                      << "': " << e.what() << std::endl;
+            std::cerr << "ERROR: Failed to initialize physics scheme '" << scheme_config.name << "': " << e.what() << std::endl;
             if (rc != nullptr) {
                 *rc = -1;
             }
@@ -254,8 +263,7 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
         }
     }
 
-    std::cout << "INFO: Successfully initialized " << internal_data->active_schemes.size()
-              << " physics schemes" << std::endl;
+    std::cout << "INFO: Successfully initialized " << internal_data->active_schemes.size() << " physics schemes" << std::endl;
 
     // 5. Initialize StackingEngine
     std::cout << "INFO: Initializing StackingEngine" << std::endl;
@@ -295,16 +303,13 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
     if (config.output_config.enabled) {
         std::cout << "INFO: Initializing CeceStandaloneWriter for standalone output" << std::endl;
         try {
-            internal_data->standalone_writer =
-                std::make_unique<cece::CeceStandaloneWriter>(config.output_config);
+            internal_data->standalone_writer = std::make_unique<cece::CeceStandaloneWriter>(config.output_config);
             internal_data->standalone_mode = true;
             std::cout << "INFO: CeceStandaloneWriter initialized successfully" << std::endl;
             std::cout << "INFO: Output directory: " << config.output_config.directory << std::endl;
-            std::cout << "INFO: Output frequency: every " << config.output_config.frequency_steps
-                      << " time steps" << std::endl;
+            std::cout << "INFO: Output frequency: every " << config.output_config.frequency_steps << " time steps" << std::endl;
         } catch (const std::exception& e) {
-            std::cerr << "ERROR: Failed to initialize CeceStandaloneWriter: " << e.what()
-                      << std::endl;
+            std::cerr << "ERROR: Failed to initialize CeceStandaloneWriter: " << e.what() << std::endl;
             if (rc != nullptr) {
                 *rc = -1;
             }
@@ -315,8 +320,7 @@ void cece_core_initialize_p1(void** data_ptr_ptr, int* rc) {
             return;
         }
     } else {
-        std::cout << "INFO: No output configuration found - standalone writer disabled"
-                  << std::endl;
+        std::cout << "INFO: No output configuration found - standalone writer disabled" << std::endl;
         internal_data->standalone_mode = false;
     }
 
