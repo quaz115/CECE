@@ -12,6 +12,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <cmath>
+#include <stdexcept>
 #include <string>
 
 #include "cece/cece_state.hpp"
@@ -676,6 +677,45 @@ TEST_F(BdsnpSchemeTest, SoilNOWrittenToExportState_BdsnpMode) {
             EXPECT_GT(hv(i, j, 0), 0.0) << "soil_nox_emissions (bdsnp mode) should be positive at (" << i << "," << j << ")";
         }
     }
+}
+
+TEST_F(BdsnpSchemeTest, MissingRequiredFieldsFailLoudly) {
+    YAML::Node config;
+    config["soil_no_method"] = "bdsnp";
+    BdsnpScheme scheme;
+    scheme.Initialize(config, nullptr);
+
+    CeceImportState missing_import;
+    EXPECT_THROW(scheme.Run(missing_import, export_state), std::runtime_error);
+
+    // ResolveImport/ResolveExport cache views between calls. This test changes
+    // state objects, so clear the cache before testing the missing export.
+    scheme.ClearPhysicsCache();
+
+    CeceExportState missing_export;
+    EXPECT_THROW(scheme.Run(import_state, missing_export), std::runtime_error);
+}
+
+TEST_F(BdsnpSchemeTest, RepeatedRunsProduceInstantaneousFluxAndFreezingClearsOutput) {
+    YAML::Node config;
+    config["soil_no_method"] = "bdsnp";
+    BdsnpScheme scheme;
+    scheme.Initialize(config, nullptr);
+
+    scheme.Run(import_state, export_state);
+    auto& dv = export_state.fields["soil_nox_emissions"];
+    dv.sync<Kokkos::HostSpace>();
+    const double first = dv.view_host()(0, 0, 0);
+    ASSERT_GT(first, 0.0);
+
+    scheme.Run(import_state, export_state);
+    dv.sync<Kokkos::HostSpace>();
+    EXPECT_DOUBLE_EQ(dv.view_host()(0, 0, 0), first);
+
+    SetFieldValue("soil_temperature", 272.0);
+    scheme.Run(import_state, export_state);
+    dv.sync<Kokkos::HostSpace>();
+    EXPECT_DOUBLE_EQ(dv.view_host()(0, 0, 0), 0.0);
 }
 
 // ============================================================================

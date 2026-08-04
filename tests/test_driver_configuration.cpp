@@ -325,6 +325,57 @@ physics_schemes:
     EXPECT_EQ(config.driver_config.amio_worker_threads, 1);
 }
 
+TEST_F(DriverConfigurationTest, ParseAmioStagingBufferCount) {
+    WriteConfigFile(test_config_file, R"(
+driver:
+  amio_staging_buffer_count: 16
+physics_schemes: []
+)");
+    CeceConfig config = ParseConfig(test_config_file);
+    EXPECT_EQ(config.driver_config.amio_staging_buffer_count, 16);
+
+    WriteConfigFile(test_config_file, R"(
+driver:
+  amio_staging_buffer_count: 0
+physics_schemes: []
+)");
+    config = ParseConfig(test_config_file);
+    EXPECT_EQ(config.driver_config.amio_staging_buffer_count, 8);
+
+    WriteConfigFile(test_config_file, R"(
+driver: {}
+physics_schemes: []
+)");
+    config = ParseConfig(test_config_file);
+    EXPECT_EQ(config.driver_config.amio_staging_buffer_count, 8);
+}
+
+TEST_F(DriverConfigurationTest, PhysicsSchemeTopLevelMappingsArePassedToOptions) {
+    WriteConfigFile(test_config_file, R"(
+physics_schemes:
+  - name: bdsnp
+    options:
+      soil_no_method: bdsnp
+    input_mapping:
+      soil_temperature: TSOIL1
+      soil_moisture: GWETTOP
+    output_mapping:
+      soil_nox_emissions: SOIL_NO
+    diagnostics:
+      - soil_no_emission_rate
+)");
+
+    CeceConfig config = ParseConfig(test_config_file);
+    ASSERT_EQ(config.physics_schemes.size(), 1u);
+    const YAML::Node& options = config.physics_schemes[0].options;
+    EXPECT_EQ(options["soil_no_method"].as<std::string>(), "bdsnp");
+    EXPECT_EQ(options["input_mapping"]["soil_temperature"].as<std::string>(), "TSOIL1");
+    EXPECT_EQ(options["input_mapping"]["soil_moisture"].as<std::string>(), "GWETTOP");
+    EXPECT_EQ(options["output_mapping"]["soil_nox_emissions"].as<std::string>(), "SOIL_NO");
+    ASSERT_EQ(options["diagnostics"].size(), 1u);
+    EXPECT_EQ(options["diagnostics"][0].as<std::string>(), "soil_no_emission_rate");
+}
+
 TEST_F(DriverConfigurationTest, ParseAmioWorkerThreadsOutput) {
     // 1. Verify custom positive values parse correctly in output block
     WriteConfigFile(test_config_file, R"(

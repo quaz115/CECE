@@ -207,7 +207,15 @@ CeceConfig ParseConfig(const std::string& filename) {
                 scheme.language = scheme_node["language"].as<std::string>();
             }
             if (scheme_node["options"]) {
-                scheme.options = scheme_node["options"];
+                scheme.options = YAML::Clone(scheme_node["options"]);
+            }
+            // Shipped examples and documentation place these entries at the
+            // scheme level, while BasePhysicsScheme reads them from the node
+            // passed to Initialize(). Support both layouts.
+            for (const char* key : {"input_mapping", "output_mapping", "diagnostics"}) {
+                if (scheme_node[key] && !scheme.options[key]) {
+                    scheme.options[key] = YAML::Clone(scheme_node[key]);
+                }
             }
             if (scheme_node["refresh_interval_seconds"]) {
                 scheme.refresh_interval_seconds = scheme_node["refresh_interval_seconds"].as<int>();
@@ -499,6 +507,14 @@ CeceConfig ParseConfig(const std::string& filename) {
                 threads = 1;
             }
             config.driver_config.amio_worker_threads = threads;
+        }
+        if (driver_node["amio_staging_buffer_count"]) {
+            int count = driver_node["amio_staging_buffer_count"].as<int>();
+            if (count < 1) {
+                std::cerr << "WARNING: Invalid amio_staging_buffer_count: " << count << ". Must be >= 1. Defaulting to 8.\n";
+                count = 8;
+            }
+            config.driver_config.amio_staging_buffer_count = count;
         }
     }
 
