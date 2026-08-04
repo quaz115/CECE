@@ -28,6 +28,7 @@
 #include <Kokkos_Core.hpp>
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
 
 #include "cece/cece_physics_factory.hpp"
 
@@ -244,9 +245,11 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     auto soil_moisture = ResolveImport("soil_moisture", import_state);
     auto soil_nox = ResolveExport("soil_nox_emissions", export_state);
 
-    // Early return if required fields are null
+    // Fail loudly: a silent return creates a valid-looking all-zero output.
     if (soil_temp.data() == nullptr || soil_moisture.data() == nullptr || soil_nox.data() == nullptr) {
-        return;
+        throw std::runtime_error(
+            "BdsnpScheme requires imports 'soil_temperature' and "
+            "'soil_moisture' plus export 'soil_nox_emissions'");
     }
 
     int nx = static_cast<int>(soil_nox.extent(0));
@@ -271,7 +274,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
 
                 // Set to zero if soil temp < 0°C
                 if (tc <= 0.0) {
-                    soil_nox(i, j, 0) += 0.0;
+                    soil_nox(i, j, 0) = 0.0;
                     return;
                 }
 
@@ -283,7 +286,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
 
                 // Total emission [kg NO/m2/s]
                 double emiss = a_biome_wet * UNITCONV * t_term * w_term * pulse;
-                soil_nox(i, j, 0) += emiss;
+                soil_nox(i, j, 0) = emiss;
             });
     } else {
         // ================================================================
@@ -317,7 +320,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
 
                 // Set to zero if soil temp < 0°C
                 if (tc <= 0.0) {
-                    soil_nox(i, j, 0) += 0.0;
+                    soil_nox(i, j, 0) = 0.0;
                     return;
                 }
 
@@ -345,7 +348,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
 
                 // Total BDSNP emission [kg NO/m2/s]
                 double emiss = base_ef * UNITCONV * t_response * sm_factor * fert_factor * canopy_red * pulse;
-                soil_nox(i, j, 0) += emiss;
+                soil_nox(i, j, 0) = emiss;
             });
     }
 

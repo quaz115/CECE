@@ -51,6 +51,7 @@ The `driver` section configures the execution timing and control parameters for 
 | `timestep_seconds` | Integer | Base time step duration in seconds. All component refresh intervals must be integer multiples of this value. |
 | `stacking_refresh_interval_seconds` | Integer | (Optional) Stacking engine execution interval in seconds. Must be a positive multiple of `timestep_seconds`. Default: `0` (use `timestep_seconds`). |
 | `amio_worker_threads` | Integer | (Optional) Number of AMIO background I/O worker threads. Must be ≥ 1; invalid values warn and default to 1. Default: `1`. Used as the fallback when `output.amio_worker_threads` is not set. |
+| `amio_staging_buffer_count` | Integer | (Optional) Number of AMIO staging buffers for offline input reads. Must be ≥ 1; invalid values warn and default to 8. Default: `8`. Increase to 16 for large global files if AMIO reports staging backpressure. |
 
 **Example:**
 ```yaml
