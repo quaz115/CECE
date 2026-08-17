@@ -95,10 +95,8 @@ static int DueIndex(const StepResult& step, const std::string& name) {
 
 TEST(StageOrderTest, DataStreamsPrecedePhysicsAndStackingRegardlessOfRegistrationOrder) {
     std::vector<ClockComponent> components = {
-        {ComponentType::kPhysicsScheme, "physics_b", 300},
-        {ComponentType::kDataStream, "stream_b", 300},
-        {ComponentType::kPhysicsScheme, "physics_a", 300},
-        {ComponentType::kDataStream, "stream_a", 300},
+        {ComponentType::kPhysicsScheme, "physics_b", 300}, {ComponentType::kDataStream, "stream_b", 300},
+        {ComponentType::kPhysicsScheme, "physics_a", 300}, {ComponentType::kDataStream, "stream_a", 300},
         {ComponentType::kStackingEngine, "stacking", 300},
     };
 
@@ -106,11 +104,7 @@ TEST(StageOrderTest, DataStreamsPrecedePhysicsAndStackingRegardlessOfRegistratio
     const StepResult step = clock.Advance();
 
     const std::vector<std::string> expected = {
-        "stream_b",
-        "stream_a",
-        "physics_b",
-        "physics_a",
-        "stacking",
+        "stream_b", "stream_a", "physics_b", "physics_a", "stacking",
     };
     EXPECT_EQ(DueNames(step), expected);
 }
