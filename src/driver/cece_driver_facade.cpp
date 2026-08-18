@@ -234,6 +234,12 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
     // B. Push CeceIO's newly computed emission views into CECE's data ingestor
     for (const auto& var_name : cece_io_->GetOutputVarNames()) {
         auto stream_view = cece_io_->GetFieldView(var_name);
+        const int field_nlev = static_cast<int>(stream_view.extent(2));
+        if (field_nlev < 1) {
+            LogFatal("[DRIVER FATAL] Field '" + var_name + "' has no configured levels");
+            return false;
+        }
+        std::vector<double> ingest_buffer;
 
         // Parse input file path and variable name dynamically from YAML config cece_data block
         std::string input_file_path = "";
@@ -247,13 +253,21 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
             for (const auto& stream : config["cece_data"]["streams"]) {
                 bool found_var = false;
                 for (const auto& var : stream["variables"]) {
-                    if (var["model"] && var["model"].as<std::string>() == var_name) {
+                    std::string model_name;
+                    std::string file_name;
+                    if (var.IsScalar()) {
+                        model_name = var.as<std::string>();
+                        file_name = model_name;
+                    } else if (var.IsMap() && var["model"]) {
+                        model_name = var["model"].as<std::string>();
+                        file_name = var["file"] ? var["file"].as<std::string>() : model_name;
+                    }
+
+                    if (model_name == var_name) {
                         if (stream["file"]) {
                             input_file_path = stream["file"].as<std::string>();
                         }
-                        if (var["file"]) {
-                            input_var_name = var["file"].as<std::string>();
-                        }
+                        input_var_name = file_name;
                         if (stream["mapalgo"]) {
                             mapalgo = stream["mapalgo"].as<std::string>();
                         }
@@ -479,7 +493,27 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
             auto plan_it = regrid_plans_.find(var_name);
             if (plan_it == regrid_plans_.end() || !plan_it->second.built) {
                 cece::io::RegridPlan plan;
-                if (!cece::io::build_regrid_plan(read_dataset, nx_, ny_, target_lons_, target_lats_, mapalgo, j0, j1, gridspec_file_, plan)) {
+                // An explicit passthrough is safe without reopening coordinate
+                // variables only when the stream and gridspec resolve to the
+                // exact same file.  main.cpp has already loaded and validated
+                // the target coordinates from that file; read_slab below still
+                // verifies every field's horizontal size before copying.
+                std::error_code equivalent_ec;
+                const bool exact_source_target_file =
+                    mapalgo == "passthrough" && !gridspec_file_.empty() &&
+                    fs::equivalent(fs::path(input_file_path), fs::path(gridspec_file_), equivalent_ec) && !equivalent_ec;
+
+                if (exact_source_target_file) {
+                    plan.j0 = j0;
+                    plan.j1 = j1;
+                    plan.file_nx = nx_;
+                    plan.file_ny = ny_;
+                    plan.identity = true;
+                    plan.built = true;
+                    CECE_LOG_INFO("[DRIVER] passthrough verified stream file equals explicit gridspec file for '" + var_name +
+                                  "'; using exact cell copy");
+                    plan_it = regrid_plans_.emplace(var_name, std::move(plan)).first;
+                } else if (!cece::io::build_regrid_plan(read_dataset, nx_, ny_, target_lons_, target_lats_, mapalgo, j0, j1, gridspec_file_, plan)) {
                     CECE_LOG_DEBUG("[DRIVER] build_regrid_plan failed for '" + var_name + "'");
                     failure_detail = "regrid plan construction failed (could not read source grid coordinates)";
                 } else {
@@ -523,10 +557,9 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                 int file_nx = 0;
                 int file_ny = 0;
 
-                // Read a single record into a double buffer on the source grid. The
-                // AMIO netCDF backend detects the CF time dimension and returns a
-                // single [lat, lon] slab, so each read stays at ny*nx elements even
-                // for long, high-resolution sub-daily datasets (e.g. CAMS-TEMPO).
+                // Read one time record into a double buffer on the source grid.
+                // AMIO removes the CF time dimension, but any remaining dimensions
+                // before [lat, lon] are preserved as per-variable levels.
                 auto read_slab = [&](int t_idx, std::vector<double>& out) -> bool {
                     amio_view_handle slab_view = nullptr;
                     amio_status_t rc = amio_read(read_dataset, input_var_name.c_str(), t_idx, nullptr, &slab_view);
@@ -553,31 +586,57 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                         amio_release_view(slab_view);
                         return false;
                     }
+                    if (read_shape.rank < 2) {
+                        failure_detail = "AMIO field rank is less than two for '" + input_var_name + "'";
+                        amio_release_view(slab_view);
+                        return false;
+                    }
                     const int fny = static_cast<int>(read_shape.extents[read_shape.rank - 2]);
                     const int fnx = static_cast<int>(read_shape.extents[read_shape.rank - 1]);
                     size_t total_elements = 1;
                     for (int d = 0; d < read_shape.rank; ++d) {
                         total_elements *= read_shape.extents[d];
                     }
-                    const bool is_float = (view_size == total_elements * 4);
                     const size_t spatial = static_cast<size_t>(fny) * fnx;
-                    // Normally the view holds a single slab (offset 0). Stay robust to
-                    // a backend that returns the whole variable.
-                    const size_t slices_in_view = (spatial > 0) ? (total_elements / spatial) : 1;
-                    const size_t off = (slices_in_view > 1) ? static_cast<size_t>(t_idx) * spatial : 0;
-                    out.resize(spatial);
+                    const size_t record_elements = static_cast<size_t>(field_nlev) * spatial;
+                    if (spatial == 0 || record_elements == 0 || total_elements % record_elements != 0) {
+                        failure_detail = "AMIO field shape is incompatible with configured levels=" + std::to_string(field_nlev) + " for '" +
+                                         input_var_name + "'";
+                        amio_release_view(slab_view);
+                        return false;
+                    }
+                    const size_t records_in_view = total_elements / record_elements;
+                    const size_t record_index = records_in_view > 1 ? static_cast<size_t>(t_idx) : 0;
+                    if (record_index >= records_in_view) {
+                        failure_detail = "AMIO view does not contain requested record " + std::to_string(t_idx) + " for '" + input_var_name + "'";
+                        amio_release_view(slab_view);
+                        return false;
+                    }
+                    const size_t offset = record_index * record_elements;
+
+                    const bool is_float = (view_size == total_elements * sizeof(float));
+                    const bool is_double = (view_size == total_elements * sizeof(double));
+                    if (!is_float && !is_double) {
+                        failure_detail = "AMIO returned an unsupported element size for '" + input_var_name + "'";
+                        amio_release_view(slab_view);
+                        return false;
+                    }
+
+                    out.resize(record_elements);
                     if (is_float) {
-                        const float* p = static_cast<const float*>(view_data) + off;
-                        for (size_t k = 0; k < spatial; ++k) out[k] = static_cast<double>(p[k]);
+                        const float* p = static_cast<const float*>(view_data) + offset;
+                        for (size_t k = 0; k < record_elements; ++k) out[k] = static_cast<double>(p[k]);
                     } else {
-                        const double* p = static_cast<const double*>(view_data) + off;
-                        for (size_t k = 0; k < spatial; ++k) out[k] = p[k];
+                        const double* p = static_cast<const double*>(view_data) + offset;
+                        for (size_t k = 0; k < record_elements; ++k) out[k] = p[k];
                     }
                     file_nx = fnx;
                     file_ny = fny;
                     amio_release_view(slab_view);
                     CECE_LOG_DEBUG("[DRIVER] Read slab t=" + std::to_string(t_idx) + " for '" + input_var_name + "': " + std::to_string(fny) + "x" +
-                                   std::to_string(fnx) + " (" + std::to_string(spatial) + " elements, " + (is_float ? "float32" : "float64") + ")");
+                                   std::to_string(fnx) + "x" + std::to_string(field_nlev) + " (" + std::to_string(record_elements) +
+                                   " elements, records_in_view=" + std::to_string(records_in_view) + ", " +
+                                   (is_float ? "float32" : "float64") + ")");
                     return true;
                 };
 
@@ -598,59 +657,91 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                 }
 
                 if (have_data) {
-                    std::vector<double> local_dst;
-                    if (cece::io::apply_regrid_plan(plan, /*time_offset=*/0, /*is_float=*/false, src.data(), file_nx, file_ny, nx_, local_dst)) {
-                        // Gather each rank's destination band into the full [nx_*ny_] field.
-                        std::vector<double> full_dst(static_cast<size_t>(nx_) * ny_, 0.0);
+                    const size_t source_spatial = static_cast<size_t>(file_nx) * file_ny;
+                    const size_t target_spatial = static_cast<size_t>(nx_) * ny_;
+                    const size_t expected_source_size = static_cast<size_t>(field_nlev) * source_spatial;
+                    if (src.size() != expected_source_size) {
+                        failure_detail = "source buffer size changed after AMIO shape validation";
+                    } else {
+                        std::vector<int> counts;
+                        std::vector<int> displs;
                         if (mpi_initialized && mpi_size > 1 && comm_c_ != MPI_COMM_NULL) {
-                            std::vector<int> counts(mpi_size), displs(mpi_size);
+                            counts.resize(mpi_size);
+                            displs.resize(mpi_size);
                             for (int r = 0; r < mpi_size; ++r) {
                                 counts[r] = (band_start(r + 1) - band_start(r)) * nx_;
                                 displs[r] = band_start(r) * nx_;
                             }
-                            MPI_Allgatherv(local_dst.data(), counts[mpi_rank], MPI_DOUBLE, full_dst.data(), counts.data(), displs.data(), MPI_DOUBLE,
-                                           comm_c_);
-                        } else {
-                            std::copy(local_dst.begin(), local_dst.end(), full_dst.begin() + static_cast<size_t>(j0) * nx_);
                         }
 
-                        // Populate the CECE field view (i, j, 0) from the full field.
-                        auto h_view = Kokkos::create_mirror_view(stream_view);
-                        for (int j = 0; j < ny_; ++j) {
-                            for (int i = 0; i < nx_; ++i) {
-                                h_view(i, j, 0) = full_dst[static_cast<size_t>(j) * nx_ + i];
+                        std::vector<double> full_dst(static_cast<size_t>(field_nlev) * target_spatial, 0.0);
+                        bool all_layers_regridded = true;
+                        for (int lev = 0; lev < field_nlev; ++lev) {
+                            std::vector<double> local_dst;
+                            const double* source_layer = src.data() + static_cast<size_t>(lev) * source_spatial;
+                            if (!cece::io::apply_regrid_plan(plan, /*time_offset=*/0, /*is_float=*/false, source_layer, file_nx, file_ny, nx_,
+                                                             local_dst)) {
+                                all_layers_regridded = false;
+                                break;
+                            }
+
+                            double* destination_layer = full_dst.data() + static_cast<size_t>(lev) * target_spatial;
+                            if (mpi_initialized && mpi_size > 1 && comm_c_ != MPI_COMM_NULL) {
+                                MPI_Allgatherv(local_dst.data(), counts[mpi_rank], MPI_DOUBLE, destination_layer, counts.data(), displs.data(),
+                                               MPI_DOUBLE, comm_c_);
+                            } else {
+                                std::copy(local_dst.begin(), local_dst.end(), destination_layer + static_cast<size_t>(j0) * nx_);
                             }
                         }
-                        Kokkos::deep_copy(stream_view, h_view);
 
-                        // Also directly populate the C++ Core's import state fields to guarantee
-                        // parallel-safe and synchronized import states across the driver facade and compute core!
-                        auto* d = static_cast<cece::CeceInternalData*>(cece_core_data_ptr);
-                        auto it_core = d->import_state.fields.find(var_name);
-                        if (it_core == d->import_state.fields.end()) {
-                            // Dynamically allocate the import field DualView inside the core
-                            cece::DualView3D dv(var_name, nx_, ny_, nz_);
-                            d->import_state.fields[var_name] = dv;
-                            it_core = d->import_state.fields.find(var_name);
-                        }
-
-                        if (it_core != d->import_state.fields.end()) {
-                            auto& core_field = it_core->second;
-                            auto h_view_core = Kokkos::create_mirror_view(core_field.view_device());
-                            for (int j = 0; j < ny_; ++j) {
-                                for (int i = 0; i < nx_; ++i) {
-                                    h_view_core(i, j, 0) = full_dst[static_cast<size_t>(j) * nx_ + i];
+                        if (!all_layers_regridded) {
+                            CECE_LOG_DEBUG("[DRIVER] apply_regrid_plan returned false!");
+                            failure_detail = "regrid weight application failed";
+                        } else {
+                            auto h_view = Kokkos::create_mirror_view(stream_view);
+                            for (int lev = 0; lev < field_nlev; ++lev) {
+                                for (int j = 0; j < ny_; ++j) {
+                                    for (int i = 0; i < nx_; ++i) {
+                                        h_view(i, j, lev) = full_dst[static_cast<size_t>(lev) * target_spatial + static_cast<size_t>(j) * nx_ + i];
+                                    }
                                 }
                             }
-                            Kokkos::deep_copy(core_field.view_device(), h_view_core);
-                            core_field.modify_device();
-                            core_field.sync_host();
-                        }
+                            Kokkos::deep_copy(stream_view, h_view);
 
-                        read_success = true;
-                    } else {
-                        CECE_LOG_DEBUG("[DRIVER] apply_regrid_plan returned false!");
-                        failure_detail = "regrid weight application failed";
+                            // Also populate the Core import state with the same full field.
+                            auto* d = static_cast<cece::CeceInternalData*>(cece_core_data_ptr);
+                            auto it_core = d->import_state.fields.find(var_name);
+                            if (it_core == d->import_state.fields.end()) {
+                                cece::DualView3D dv(var_name, nx_, ny_, field_nlev);
+                                d->import_state.fields[var_name] = dv;
+                                it_core = d->import_state.fields.find(var_name);
+                            }
+
+                            auto& core_field = it_core->second;
+                            auto core_view = core_field.view_device();
+                            if (core_view.extent(0) != static_cast<size_t>(nx_) || core_view.extent(1) != static_cast<size_t>(ny_) ||
+                                core_view.extent(2) != static_cast<size_t>(field_nlev)) {
+                                failure_detail = "core import field shape mismatch for '" + var_name + "': expected " + std::to_string(nx_) + "x" +
+                                                 std::to_string(ny_) + "x" + std::to_string(field_nlev) + ", found " +
+                                                 std::to_string(core_view.extent(0)) + "x" + std::to_string(core_view.extent(1)) + "x" +
+                                                 std::to_string(core_view.extent(2));
+                            } else {
+                                auto h_view_core = Kokkos::create_mirror_view(core_view);
+                                for (int lev = 0; lev < field_nlev; ++lev) {
+                                    for (int j = 0; j < ny_; ++j) {
+                                        for (int i = 0; i < nx_; ++i) {
+                                            h_view_core(i, j, lev) =
+                                                full_dst[static_cast<size_t>(lev) * target_spatial + static_cast<size_t>(j) * nx_ + i];
+                                        }
+                                    }
+                                }
+                                Kokkos::deep_copy(core_view, h_view_core);
+                                core_field.modify_device();
+                                core_field.sync_host();
+                                ingest_buffer = std::move(full_dst);
+                                read_success = true;
+                            }
+                        }
                     }
                 }
             }
@@ -684,16 +775,25 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
             CECE_LOG_INFO("[DRIVER] AMIO read succeeded for field '" + var_name + "' - loaded real data from " + input_file_path);
         }
 
-        // Ingest raw data pointer of stream view into CECE's ingestor cache
+        const size_t expected_ingest_size = static_cast<size_t>(field_nlev) * nx_ * ny_;
+        if (ingest_buffer.size() != expected_ingest_size) {
+            LogFatal("[DRIVER FATAL] Internal ingest buffer size mismatch for field '" + var_name + "'");
+            return false;
+        }
+
+        // Ingest the host staging buffer into CECE's cache. Do not pass a
+        // DefaultExecutionSpace pointer to the host-copying C bridge.
         int bridge_rc = 0;
-        cece_ingestor_set_field(cece_core_data_ptr, var_name.c_str(), static_cast<int>(var_name.length()), stream_view.data(),
-                                nz_,        // n_lev
+        cece_ingestor_set_field(cece_core_data_ptr, var_name.c_str(), static_cast<int>(var_name.length()), ingest_buffer.data(),
+                                field_nlev,  // n_lev
                                 nx_ * ny_,  // n_elem
                                 &bridge_rc);
         if (bridge_rc != 0) {
-            LogFatal("[DRIVER FATAL] cece_ingestor_set_field failed for variable '" + var_name + "' with rc=" + std::to_string(bridge_rc));
+            LogFatal("[DRIVER FATAL] CECE ingestor rejected field '" + var_name + "' with rc=" + std::to_string(bridge_rc));
             return false;
         }
+        CECE_LOG_INFO("[DRIVER] Ingested field '" + var_name + "' with shape " + std::to_string(nx_) + "x" + std::to_string(ny_) + "x" +
+                      std::to_string(field_nlev));
     }
 
     step_index_++;
