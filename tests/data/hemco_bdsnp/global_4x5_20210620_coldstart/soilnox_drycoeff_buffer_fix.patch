@@ -1,0 +1,22 @@
+diff --git a/src/Extensions/hcox_soilnox_mod.F90 b/src/Extensions/hcox_soilnox_mod.F90
+index a8712e3..a388f79 100644
+--- a/src/Extensions/hcox_soilnox_mod.F90
++++ b/src/Extensions/hcox_soilnox_mod.F90
+@@ -260,6 +260,7 @@ CONTAINS
+ ! !USES:
+ !
+     USE HCO_Types_Mod,      ONLY : DiagnCont
++    USE HCO_Types_Mod,      ONLY : OPTLEN
+     USE HCO_CLOCK_MOD,      ONLY : HcoClock_First
+     USE HCO_CLOCK_MOD,      ONLY : HcoClock_Rewind
+     USE HCO_FLuxArr_Mod,    ONLY : HCO_EmisAdd
+@@ -299,7 +300,8 @@ CONTAINS
+     REAL(dp), ALLOCATABLE    :: VecDp(:)
+     LOGICAL                  :: FIRST
+     LOGICAL                  :: aIR, FOUND
+-    CHARACTER(LEN= 31)       :: DiagnName, Dummy
++    CHARACTER(LEN= 31)       :: DiagnName
++    CHARACTER(LEN=OPTLEN)    :: Dummy
+     CHARACTER(LEN=255)       :: ErrMsg, ThisLoc
+     TYPE(MyInst),    POINTER :: Inst
+ 

@@ -1,0 +1,14 @@
+Field metadata:
+  InvSOILNOX_NO: long_name='NO_emission_flux_from_SoilNOx_extension_total', units='kg/m2/s', averaging='mean'
+  EmisNO_Fert: long_name='NO_emission_flux_from_fertilizer_and_deposited_N', units='kg/m2/s', averaging='mean'
+  EmisNO_Fert_a: long_name='EmisNO_Fert', units='kg/m2/s', averaging='Instantaneous'
+Total_SoilNOx: min=0.00000000000000000e+00, max=6.60768315063897660e-11, mean=9.60930205290088346e-13, positive=1116, zero=2196
+Misnamed_total_alias: min=0.00000000000000000e+00, max=6.60768315063897660e-11, mean=9.60930205290088346e-13, positive=1116, zero=2196
+Actual_fertilizer_plus_deposited_N: min=0.00000000000000000e+00, max=4.94593810351773300e-11, mean=2.57003657161322870e-13, positive=1116, zero=2196
+Total_minus_alias: min=0.00000000000000000e+00, max=0.00000000000000000e+00, mean=0.00000000000000000e+00, positive=0, zero=3312
+Natural_biome_component: min=-3.30872245021211070e-24, max=3.05801310922920733e-11, mean=7.03926548128765527e-13, positive=1085, zero=2226
+Maximum total-versus-alias difference: 0.00000000000000000e+00
+Global total:              6.29812993790932524e+02 kg NO/s
+Global fertilizer+dep-N:   1.69015832309265335e+02 kg NO/s
+Global natural biome:      4.60797161481667217e+02 kg NO/s
+PASS: HEMCO total, fertilizer+deposited-N, and natural components are independently resolved

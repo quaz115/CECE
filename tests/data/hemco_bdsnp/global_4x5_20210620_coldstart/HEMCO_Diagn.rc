@@ -1,0 +1,3 @@
+# Name Spec ExtNr Cat Hier Dim OutUnit LongName
+InvSOILNOX_NO NO 104 -1 -1 2 kg/m2/s NO_emission_flux_from_SoilNOx_extension_total
+EmisNO_Fert NO 104 -1 -1 2 kg/m2/s NO_emission_flux_from_fertilizer_and_deposited_N

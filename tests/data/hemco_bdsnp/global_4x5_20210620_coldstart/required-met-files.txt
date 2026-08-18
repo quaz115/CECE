@@ -1,0 +1,2 @@
+/scratch3/BMC/rcm2/qrasool/CECE_BDSNP_WORK/runs/hemco-soilnox-global-4x5-20210620-coldstart/ExtData/GEOS_4x5/MERRA2/2015/01/MERRA2.20150101.CN.4x5.nc4
+/scratch3/BMC/rcm2/qrasool/CECE_BDSNP_WORK/runs/hemco-soilnox-global-4x5-20210620-coldstart/ExtData/GEOS_4x5/MERRA2/2021/06/MERRA2.20210620.A1.4x5.nc4

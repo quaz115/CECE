@@ -1,0 +1,71 @@
+###############################################################################
+### BEGIN SECTION SETTINGS
+###############################################################################
+ROOT:      /scratch3/BMC/rcm2/qrasool/CECE_BDSNP_WORK/runs/hemco-soilnox-global-4x5-20210620-coldstart/ExtData/HEMCO
+METDIR:    /scratch3/BMC/rcm2/qrasool/CECE_BDSNP_WORK/runs/hemco-soilnox-global-4x5-20210620-coldstart/ExtData/GEOS_4x5/MERRA2
+MET:       MERRA2
+RES:       4x5
+CNYR:      2015
+NC:         nc4
+Separator:  /
+### END SECTION SETTINGS ###
+
+###############################################################################
+### BEGIN SECTION EXTENSION SWITCHES
+###############################################################################
+# SoilNOx is enabled and configured in HEMCO_sa_Config.rc.
+### END SECTION EXTENSION SWITCHES ###
+
+###############################################################################
+### BEGIN SECTION BASE EMISSIONS
+###############################################################################
+# New dry/wet deposited-N forcing is zero for this controlled case.
+* DRY_TOTN 0.0 - - - xy 1 * - 1 1
+* WET_TOTN 0.0 - - - xy 1 * - 1 1
+
+# Exact SoilNOx support rows extracted from pinned GC 14.7.1.
+# Input restart rows are deliberately omitted for cold start.
+104 DEP_RESERVOIR_DEFAULT $ROOT/SOILNOX/v2014-07/DepReservoirDefault.nc                 DEP_RESERVOIR 2013/7/1/0        C  xy kg/m3 NO - 1 1
+104 SOILNOX_FERT          $ROOT/SOILNOX/v2014-07/soilNOx.fert_res.generic.05x05.nc      FERT          2000/1-12/1-31/0  C  xy kg/m3 NO - 1 1
+104 SOILNOX_LANDK1        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K01  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK2        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K02  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK3        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K03  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK4        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K04  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK5        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K05  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK6        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K06  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK7        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K07  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK8        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K08  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK9        $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K09  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK10       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K10  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK11       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K11  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK12       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K12  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK13       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K13  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK14       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K14  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK15       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K15  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK16       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K16  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK17       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K17  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK18       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K18  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK19       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K19  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK20       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K20  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK21       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K21  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK22       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K22  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK23       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K23  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_LANDK24       $ROOT/SOILNOX/v2014-07/soilNOx.landtype.generic.025x025.1L.nc LANDFRAC_K24  2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_ARID          $ROOT/SOILNOX/v2014-07/soilNOx.climate.generic.05x05.nc       ARID          2000/1/1/0        C  xy 1     NO - 1 1
+104 SOILNOX_NONARID       $ROOT/SOILNOX/v2014-07/soilNOx.climate.generic.05x05.nc       NON_ARID      2000/1/1/0        C  xy 1     NO - 1 1
+
+>>>include HEMCO_Config.rc.gmao_metfields
+### END SECTION BASE EMISSIONS ###
+
+###############################################################################
+### BEGIN SECTION SCALE FACTORS
+###############################################################################
+### END SECTION SCALE FACTORS ###
+
+###############################################################################
+### BEGIN SECTION MASKS
+###############################################################################
+### END SECTION MASKS ###
+
+### END OF HEMCO INPUT FILE ###
+#EOC

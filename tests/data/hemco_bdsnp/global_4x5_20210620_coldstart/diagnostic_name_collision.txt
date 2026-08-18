@@ -1,0 +1,20 @@
+HEMCO 3.12.1 global SoilNOx reference diagnostic mapping
+
+InvSOILNOX_NO
+  Total SoilNOx extension flux.
+
+EmisNO_Fert
+  This was created by the explicit HEMCO_Diagn.rc ext-104 row.
+  Because an ext-104 selector returns the complete extension flux, this
+  field duplicates InvSOILNOX_NO. Its chosen name is misleading.
+
+EmisNO_Fert_a
+  HEMCO SoilNOx's internally registered FERTDIAG field. HEMCO appended
+  "_a" because EmisNO_Fert was already occupied. This is the actual
+  fertilizer plus deposited-N-reservoir contribution.
+
+Natural biome contribution
+  InvSOILNOX_NO - EmisNO_Fert_a
+
+No rerun is required. CECE comparisons must use InvSOILNOX_NO for total
+and EmisNO_Fert_a for fertilizer plus deposited N.
