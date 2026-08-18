@@ -25,7 +25,9 @@
 
 #include "cece/physics/cece_bdsnp.hpp"
 
+#include <Kokkos_Array.hpp>
 #include <Kokkos_Core.hpp>
+#include <cstddef>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -150,9 +152,14 @@ void BdsnpScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* di
     if (config["soil_no_method"]) {
         soil_no_method_ = config["soil_no_method"].as<std::string>();
     }
-    if (soil_no_method_ != "bdsnp" && soil_no_method_ != "yl95") {
+    if (soil_no_method_ != "bdsnp" && soil_no_method_ != "yl95" && soil_no_method_ != "hemco_3_12_1") {
         std::cout << "BdsnpScheme: WARNING - Unknown soil_no_method '" << soil_no_method_ << "', falling back to 'bdsnp'\n";
         soil_no_method_ = "bdsnp";
+    }
+
+    use_soil_temperature_ = false;
+    if (config["use_soil_temperature"]) {
+        use_soil_temperature_ = config["use_soil_temperature"].as<bool>();
     }
 
     // ---- Read YL95 parameters ----
@@ -240,6 +247,150 @@ void BdsnpScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* di
 // ============================================================================
 
 void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_state) {
+    if (soil_no_method_ == "hemco_3_12_1") {
+        // Exact HEMCO 3.12.1 stateless cell arithmetic. Stateful quantities
+        // and upstream canopy/deposited-N calculations are explicit inputs so
+        // they can first be checked against a frozen HEMCO global reference.
+        auto temperature = ResolveImport(use_soil_temperature_ ? "soil_temperature" : "surface_temperature", import_state);
+        auto soil_moisture = ResolveImport("soil_moisture", import_state);
+        auto land_fractions = ResolveImport("soilnox_land_fractions", import_state);
+        auto arid_fraction = ResolveImport("soilnox_arid_fraction", import_state);
+        auto nonarid_fraction = ResolveImport("soilnox_nonarid_fraction", import_state);
+        auto lai = ResolveImport("leaf_area_index", import_state);
+        auto canopy_nox = ResolveImport("soilnox_canopy_nox", import_state);
+        auto wind_speed_squared = ResolveImport("wind_speed_squared", import_state);
+        auto solar_zenith_cosine = ResolveImport("solar_zenith_cosine", import_state);
+        auto soil_fertilizer = ResolveImport("soil_fertilizer", import_state);
+        auto deposited_nitrogen = ResolveImport("deposited_nitrogen", import_state);
+        auto pulse_factor = ResolveImport("soilnox_pulse_factor", import_state);
+        auto soil_nox = ResolveExport("soil_nox_emissions", export_state);
+        auto fertilizer_nox = ResolveExport("soil_nox_fertilizer_emissions", export_state);
+
+        if (temperature.data() == nullptr || soil_moisture.data() == nullptr || land_fractions.data() == nullptr || arid_fraction.data() == nullptr ||
+            nonarid_fraction.data() == nullptr || lai.data() == nullptr || canopy_nox.data() == nullptr || wind_speed_squared.data() == nullptr ||
+            solar_zenith_cosine.data() == nullptr || soil_fertilizer.data() == nullptr || deposited_nitrogen.data() == nullptr ||
+            pulse_factor.data() == nullptr || soil_nox.data() == nullptr || fertilizer_nox.data() == nullptr) {
+            throw std::runtime_error(
+                "BdsnpScheme hemco_3_12_1 mode requires surface/soil temperature, soil_moisture, "
+                "soilnox_land_fractions[24], soilnox_arid_fraction, soilnox_nonarid_fraction, "
+                "leaf_area_index, soilnox_canopy_nox[24], wind_speed_squared, solar_zenith_cosine, "
+                "soil_fertilizer, deposited_nitrogen, soilnox_pulse_factor, and both SoilNOx exports");
+        }
+
+        const int nx = static_cast<int>(soil_nox.extent(0));
+        const int ny = static_cast<int>(soil_nox.extent(1));
+        auto require_scalar_shape = [nx, ny](const auto& view, const char* name) {
+            if (view.extent(0) != nx || view.extent(1) != ny || view.extent(2) < 1) {
+                throw std::runtime_error(std::string("BdsnpScheme hemco_3_12_1 field has incompatible shape: ") + name);
+            }
+        };
+        require_scalar_shape(temperature, "temperature");
+        require_scalar_shape(soil_moisture, "soil_moisture");
+        require_scalar_shape(arid_fraction, "soilnox_arid_fraction");
+        require_scalar_shape(nonarid_fraction, "soilnox_nonarid_fraction");
+        require_scalar_shape(lai, "leaf_area_index");
+        require_scalar_shape(wind_speed_squared, "wind_speed_squared");
+        require_scalar_shape(solar_zenith_cosine, "solar_zenith_cosine");
+        require_scalar_shape(soil_fertilizer, "soil_fertilizer");
+        require_scalar_shape(deposited_nitrogen, "deposited_nitrogen");
+        require_scalar_shape(pulse_factor, "soilnox_pulse_factor");
+        require_scalar_shape(fertilizer_nox, "soil_nox_fertilizer_emissions");
+        if (land_fractions.extent(0) != nx || land_fractions.extent(1) != ny || land_fractions.extent(2) != 24 || canopy_nox.extent(0) != nx ||
+            canopy_nox.extent(1) != ny || canopy_nox.extent(2) != 24) {
+            throw std::runtime_error("BdsnpScheme hemco_3_12_1 requires exactly 24 land-fraction and canopy-NOx layers");
+        }
+
+        const Kokkos::Array<double, 24> a_biome = {
+            0.00, 0.00, 0.00, 0.00, 0.00, 0.06, 0.09, 0.09, 0.01, 0.84, 0.84, 0.24,
+            0.42, 0.62, 0.03, 0.36, 0.36, 0.35, 1.66, 0.08, 0.44, 0.57, 0.57, 0.57};
+        const Kokkos::Array<double, 24> soil_ta = {
+            0.00, 0.92, 0.00, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66,
+            0.66, 0.66, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 1.03, 1.03, 1.03};
+        const Kokkos::Array<double, 24> soil_tb = {
+            0.00, 4.40, 0.00, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80,
+            8.80, 8.80, 3.60, 3.60, 3.60, 3.60, 3.60, 3.60, 3.60, 2.90, 2.90, 2.90};
+        const Kokkos::Array<double, 24> soil_exc = {
+            0.10, 0.50, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 1.00, 1.00, 1.00,
+            1.00, 2.00, 4.00, 4.00, 4.00, 4.00, 4.00, 4.00, 4.00, 2.00, 0.10, 2.00};
+        const bool use_soil_temperature = use_soil_temperature_;
+        constexpr double unit_conversion = 1.0e-12 / 14.0 * 30.0;
+        constexpr double fertilizer_scale = 0.0068;
+        constexpr double seconds_per_year = 3.1536e7;
+        constexpr double soil_exp_coefficient = static_cast<double>(0.103F);
+        constexpr double cubic_3 = static_cast<double>(-0.009F);
+        constexpr double cubic_2 = static_cast<double>(0.837F);
+        constexpr double cubic_1 = static_cast<double>(-22.527F);
+        constexpr double cubic_0 = static_cast<double>(196.149F);
+
+        Kokkos::parallel_for(
+            "BdsnpKernel_HEMCO_3_12_1", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
+            KOKKOS_LAMBDA(int i, int j) {
+                soil_nox(i, j, 0) = 0.0;
+                fertilizer_nox(i, j, 0) = 0.0;
+
+                // Match HEMCO's exact no-soil gate before updating any state.
+                if (land_fractions(i, j, 0) == 1.0) {
+                    return;
+                }
+
+                const double temperature_c = temperature(i, j, 0) - 273.15;
+                const double gwet = soil_moisture(i, j, 0);
+                const double arid = arid_fraction(i, j, 0);
+                const double nonarid = nonarid_fraction(i, j, 0);
+                const double wetness = (arid >= nonarid && arid > 0.0) ? 8.24 * gwet * std::exp(-12.5 * gwet * gwet)
+                                                                          : 5.5 * gwet * std::exp(-5.55 * gwet * gwet);
+                const double fertilizer = (soil_fertilizer(i, j, 0) + deposited_nitrogen(i, j, 0)) / seconds_per_year * fertilizer_scale;
+                const double leaf_area_index = lai(i, j, 0);
+                const double wind_squared = wind_speed_squared(i, j, 0);
+                const double sun_cosine = solar_zenith_cosine(i, j, 0);
+                const double pulse = pulse_factor(i, j, 0);
+
+                double total = 0.0;
+                double added_n_total = 0.0;
+                for (int k = 0; k < 24; ++k) {
+                    double adjusted_temperature = temperature_c;
+                    if (!use_soil_temperature) {
+                        adjusted_temperature = gwet < 0.3 ? adjusted_temperature + 5.0 : soil_ta[k] * adjusted_temperature + soil_tb[k];
+                    }
+
+                    double temperature_term = 0.0;
+                    if (adjusted_temperature > 0.0) {
+                        if (!use_soil_temperature) {
+                            adjusted_temperature = adjusted_temperature >= 30.0 ? 30.0 : adjusted_temperature;
+                            temperature_term = std::exp(0.103 * adjusted_temperature);
+                        } else {
+                            adjusted_temperature = adjusted_temperature >= 40.0 ? 40.0 : adjusted_temperature;
+                            temperature_term = adjusted_temperature <= 20.0
+                                                   ? std::exp(soil_exp_coefficient * adjusted_temperature)
+                                                   : cubic_3 * adjusted_temperature * adjusted_temperature * adjusted_temperature +
+                                                         cubic_2 * adjusted_temperature * adjusted_temperature + cubic_1 * adjusted_temperature +
+                                                         cubic_0;
+                        }
+                    }
+
+                    double canopy_reduction = 0.0;
+                    const double canopy = canopy_nox(i, j, k);
+                    if (leaf_area_index > 0.0 && canopy > 0.0) {
+                        double ventilation = sun_cosine > 0.0 ? 1.0e-2 : 0.2e-2;
+                        ventilation *= std::sqrt(wind_squared / 9.0 * 7.0 / leaf_area_index) * (soil_exc[20] / soil_exc[k]);
+                        canopy_reduction = canopy / (canopy + ventilation);
+                    }
+
+                    const double common = temperature_term * wetness * pulse * land_fractions(i, j, k) * (1.0 - canopy_reduction);
+                    total += (a_biome[k] * unit_conversion + fertilizer) * common;
+                    added_n_total += fertilizer * common;
+                }
+
+                soil_nox(i, j, 0) = total > 0.0 ? total : 0.0;
+                fertilizer_nox(i, j, 0) = added_n_total;
+            });
+
+        Kokkos::fence();
+        MarkModified("soil_nox_emissions", export_state);
+        MarkModified("soil_nox_fertilizer_emissions", export_state);
+        return;
+    }
+
     // ---- Resolve import fields ----
     auto soil_temp = ResolveImport("soil_temperature", import_state);
     auto soil_moisture = ResolveImport("soil_moisture", import_state);

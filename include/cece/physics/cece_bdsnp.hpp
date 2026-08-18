@@ -16,6 +16,8 @@ namespace cece {
  *     dependence, nitrogen deposition fertilization, canopy reduction
  *   - "yl95": Yienger & Levy (1995) soil temperature response, soil moisture
  *     pulse, canopy reduction factor
+ *   - "hemco_3_12_1": exact stateless HEMCO 3.12.1 cell arithmetic using
+ *     externally supplied HEMCO canopy, pulse, fertilizer, and reservoir terms
  *
  * Writes computed soil NO emissions to the export state field
  * "soil_nox_emissions" for consumption by MEGAN3 or other schemes.
@@ -29,7 +31,8 @@ class BdsnpScheme : public BasePhysicsScheme {
     void Run(CeceImportState& import_state, CeceExportState& export_state) override;
 
    private:
-    std::string soil_no_method_ = "bdsnp";  // "bdsnp" or "yl95"
+    std::string soil_no_method_ = "bdsnp";  // "bdsnp", "yl95", or "hemco_3_12_1"
+    bool use_soil_temperature_ = false;
 
     // YL95 parameters (reused from existing SoilNoxScheme)
     double a_biome_wet_ = 0.5;
