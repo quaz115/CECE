@@ -145,9 +145,8 @@ TEST_F(HemcoSoilNoxRuntimeTest, MixedBiomesAndAddedNitrogenAreWeightedExactly) {
     const auto result6 = EvaluateStatelessContribution(biome6);
     const auto result10 = EvaluateStatelessContribution(biome10);
     const double expected_total = 0.25 * result6.cell_flux + 0.75 * result10.cell_flux;
-    const double expected_added_n =
-        0.25 * result6.fertilizer_scaled * result6.temperature_term * result6.wetness_term +
-        0.75 * result10.fertilizer_scaled * result10.temperature_term * result10.wetness_term;
+    const double expected_added_n = 0.25 * result6.fertilizer_scaled * result6.temperature_term * result6.wetness_term +
+                                    0.75 * result10.fertilizer_scaled * result10.temperature_term * result10.wetness_term;
 
     ExpectHemcoNear(OutputAt("soil_nox_emissions"), expected_total);
     ExpectHemcoNear(OutputAt("soil_nox_fertilizer_emissions"), expected_added_n);

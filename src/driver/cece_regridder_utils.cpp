@@ -408,12 +408,9 @@ bool same_grid_coordinates(int nx, int ny, const std::vector<double>& source_lon
             double source_lat = 0.0;
             double target_lon = 0.0;
             double target_lat = 0.0;
-            if (!coordinate_at(source_lons, nx, ny, i, j, true, source_lon) ||
-                !coordinate_at(source_lats, nx, ny, i, j, false, source_lat) ||
-                !coordinate_at(target_lons, nx, ny, i, j, true, target_lon) ||
-                !coordinate_at(target_lats, nx, ny, i, j, false, target_lat) ||
-                !coordinates_equal(source_lon, target_lon, true, tolerance) ||
-                !coordinates_equal(source_lat, target_lat, false, tolerance)) {
+            if (!coordinate_at(source_lons, nx, ny, i, j, true, source_lon) || !coordinate_at(source_lats, nx, ny, i, j, false, source_lat) ||
+                !coordinate_at(target_lons, nx, ny, i, j, true, target_lon) || !coordinate_at(target_lats, nx, ny, i, j, false, target_lat) ||
+                !coordinates_equal(source_lon, target_lon, true, tolerance) || !coordinates_equal(source_lat, target_lat, false, tolerance)) {
                 return false;
             }
         }

@@ -499,9 +499,9 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                 // the target coordinates from that file; read_slab below still
                 // verifies every field's horizontal size before copying.
                 std::error_code equivalent_ec;
-                const bool exact_source_target_file =
-                    mapalgo == "passthrough" && !gridspec_file_.empty() &&
-                    fs::equivalent(fs::path(input_file_path), fs::path(gridspec_file_), equivalent_ec) && !equivalent_ec;
+                const bool exact_source_target_file = mapalgo == "passthrough" && !gridspec_file_.empty() &&
+                                                      fs::equivalent(fs::path(input_file_path), fs::path(gridspec_file_), equivalent_ec) &&
+                                                      !equivalent_ec;
 
                 if (exact_source_target_file) {
                     plan.j0 = j0;
@@ -600,8 +600,8 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                     const size_t spatial = static_cast<size_t>(fny) * fnx;
                     const size_t record_elements = static_cast<size_t>(field_nlev) * spatial;
                     if (spatial == 0 || record_elements == 0 || total_elements % record_elements != 0) {
-                        failure_detail = "AMIO field shape is incompatible with configured levels=" + std::to_string(field_nlev) + " for '" +
-                                         input_var_name + "'";
+                        failure_detail =
+                            "AMIO field shape is incompatible with configured levels=" + std::to_string(field_nlev) + " for '" + input_var_name + "'";
                         amio_release_view(slab_view);
                         return false;
                     }
@@ -635,8 +635,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                     amio_release_view(slab_view);
                     CECE_LOG_DEBUG("[DRIVER] Read slab t=" + std::to_string(t_idx) + " for '" + input_var_name + "': " + std::to_string(fny) + "x" +
                                    std::to_string(fnx) + "x" + std::to_string(field_nlev) + " (" + std::to_string(record_elements) +
-                                   " elements, records_in_view=" + std::to_string(records_in_view) + ", " +
-                                   (is_float ? "float32" : "float64") + ")");
+                                   " elements, records_in_view=" + std::to_string(records_in_view) + ", " + (is_float ? "float32" : "float64") + ")");
                     return true;
                 };
 
@@ -786,7 +785,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
         int bridge_rc = 0;
         cece_ingestor_set_field(cece_core_data_ptr, var_name.c_str(), static_cast<int>(var_name.length()), ingest_buffer.data(),
                                 field_nlev,  // n_lev
-                                nx_ * ny_,  // n_elem
+                                nx_ * ny_,   // n_elem
                                 &bridge_rc);
         if (bridge_rc != 0) {
             LogFatal("[DRIVER FATAL] CECE ingestor rejected field '" + var_name + "' with rc=" + std::to_string(bridge_rc));

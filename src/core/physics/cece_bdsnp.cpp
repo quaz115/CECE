@@ -27,8 +27,8 @@
 
 #include <Kokkos_Array.hpp>
 #include <Kokkos_Core.hpp>
-#include <cstddef>
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 #include <stdexcept>
 
@@ -300,18 +300,14 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
             throw std::runtime_error("BdsnpScheme hemco_3_12_1 requires exactly 24 land-fraction and canopy-NOx layers");
         }
 
-        const Kokkos::Array<double, 24> a_biome = {
-            0.00, 0.00, 0.00, 0.00, 0.00, 0.06, 0.09, 0.09, 0.01, 0.84, 0.84, 0.24,
-            0.42, 0.62, 0.03, 0.36, 0.36, 0.35, 1.66, 0.08, 0.44, 0.57, 0.57, 0.57};
-        const Kokkos::Array<double, 24> soil_ta = {
-            0.00, 0.92, 0.00, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66,
-            0.66, 0.66, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 1.03, 1.03, 1.03};
-        const Kokkos::Array<double, 24> soil_tb = {
-            0.00, 4.40, 0.00, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80,
-            8.80, 8.80, 3.60, 3.60, 3.60, 3.60, 3.60, 3.60, 3.60, 2.90, 2.90, 2.90};
-        const Kokkos::Array<double, 24> soil_exc = {
-            0.10, 0.50, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 1.00, 1.00, 1.00,
-            1.00, 2.00, 4.00, 4.00, 4.00, 4.00, 4.00, 4.00, 4.00, 2.00, 0.10, 2.00};
+        const Kokkos::Array<double, 24> a_biome = {0.00, 0.00, 0.00, 0.00, 0.00, 0.06, 0.09, 0.09, 0.01, 0.84, 0.84, 0.24,
+                                                   0.42, 0.62, 0.03, 0.36, 0.36, 0.35, 1.66, 0.08, 0.44, 0.57, 0.57, 0.57};
+        const Kokkos::Array<double, 24> soil_ta = {0.00, 0.92, 0.00, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66, 0.66,
+                                                   0.66, 0.66, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 0.84, 1.03, 1.03, 1.03};
+        const Kokkos::Array<double, 24> soil_tb = {0.00, 4.40, 0.00, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80, 8.80,
+                                                   8.80, 8.80, 3.60, 3.60, 3.60, 3.60, 3.60, 3.60, 3.60, 2.90, 2.90, 2.90};
+        const Kokkos::Array<double, 24> soil_exc = {0.10, 0.50, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 1.00, 1.00, 1.00,
+                                                    1.00, 2.00, 4.00, 4.00, 4.00, 4.00, 4.00, 4.00, 4.00, 2.00, 0.10, 2.00};
         const bool use_soil_temperature = use_soil_temperature_;
         constexpr double unit_conversion = 1.0e-12 / 14.0 * 30.0;
         constexpr double fertilizer_scale = 0.0068;
@@ -337,8 +333,8 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
                 const double gwet = soil_moisture(i, j, 0);
                 const double arid = arid_fraction(i, j, 0);
                 const double nonarid = nonarid_fraction(i, j, 0);
-                const double wetness = (arid >= nonarid && arid > 0.0) ? 8.24 * gwet * std::exp(-12.5 * gwet * gwet)
-                                                                          : 5.5 * gwet * std::exp(-5.55 * gwet * gwet);
+                const double wetness =
+                    (arid >= nonarid && arid > 0.0) ? 8.24 * gwet * std::exp(-12.5 * gwet * gwet) : 5.5 * gwet * std::exp(-5.55 * gwet * gwet);
                 const double fertilizer = (soil_fertilizer(i, j, 0) + deposited_nitrogen(i, j, 0)) / seconds_per_year * fertilizer_scale;
                 const double leaf_area_index = lai(i, j, 0);
                 const double wind_squared = wind_speed_squared(i, j, 0);

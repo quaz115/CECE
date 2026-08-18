@@ -116,8 +116,7 @@ TEST_F(CeceUtilsTest, IdentityRegridPlanCopiesTheOwnedRowsExactly) {
 
     plan.j0 = 0;
     plan.j1 = 4;
-    const std::vector<float> source_with_offset = {-999.0F, 0.0F, 1.0F, 2.0F, 10.0F, 11.0F, 12.0F,
-                                                   20.0F,   21.0F, 22.0F, 30.0F, 31.0F, 32.0F};
+    const std::vector<float> source_with_offset = {-999.0F, 0.0F, 1.0F, 2.0F, 10.0F, 11.0F, 12.0F, 20.0F, 21.0F, 22.0F, 30.0F, 31.0F, 32.0F};
     ASSERT_TRUE(io::apply_regrid_plan(plan, 1, true, source_with_offset.data(), 3, 4, 3, destination));
     EXPECT_EQ(destination, source);
 }
