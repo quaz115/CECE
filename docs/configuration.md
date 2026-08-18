@@ -322,11 +322,27 @@ List of physics schemes to instantiate and execute during the Run phase. Physics
 | `sea_salt` | Marine aerosol emissions | `r_sala_min`, `r_salc_max`, `sea_salt_density` |
 | `megan` | Biogenic isoprene emissions (single-species) | `beta`, `ldf`, `aef`, `co2_concentration` |
 | `megan3` | Full MEGAN3 multi-species biogenic emissions | `mechanism_file`, `speciation_file`, `emission_classes` |
-| `bdsnp` | Soil NO emissions (BDSNP/YL95) | `soil_no_method`, `fert_emission_factor` |
+| `bdsnp` | Soil NO emissions (BDSNP/YL95/HEMCO 3.12.1 stateless parity) | `soil_no_method`, `fert_emission_factor`, `use_soil_temperature` |
 | `dust` | Mineral dust emissions | `particle_density`, `tuning_factor` |
 | `lightning` | Lightning NOx production | `yield_land`, `yield_ocean` |
 | `volcano` | Volcanic SO₂ emissions | `target_location`, `emission_rate` |
 | `dms` | Ocean DMS emissions | `schmidt_coeffs`, `transfer_velocity` |
+
+The C++ `bdsnp` scheme accepts three `soil_no_method` values:
+
+- `bdsnp`: the existing simplified CECE BDSNP calculation;
+- `yl95`: the Yienger and Levy (1995) calculation; and
+- `hemco_3_12_1`: the HEMCO 3.12.1 effective-input, stateless parity calculation.
+
+`hemco_3_12_1` requires scalar temperature, soil moisture, arid and
+non-arid fractions, LAI, wind-speed squared, solar-zenith cosine,
+fertilizer, deposited-N, and pulse-factor fields. It also requires exactly
+24 layers for `soilnox_land_fractions` and `soilnox_canopy_nox`, and writes
+both `soil_nox_emissions` and `soil_nox_fertilizer_emissions`.
+
+This method is currently implemented only by the C++ `bdsnp` scheme.
+`bdsnp_fortran` retains the simplified BDSNP/YL95 interface and does not
+implement the complete `hemco_3_12_1` input contract.
 
 **Example:**
 ```yaml
@@ -550,7 +566,7 @@ Configuration for data streams that read external emission inventories and auxil
 | `yearAlign` | Integer | Simulation year to align with data |
 | `taxmode` | String | Time axis mode: `cycle`, `extend`, or `limit` |
 | `tintalgo` | String | Temporal interpolation: `linear` or `nearest`. For `monthly` cadence with `linear`, mid-month interpolation is applied between bracketing records. Default: `nearest`. |
-| `mapalgo` | String | Spatial regridding: `consd`, `bilinear`, `consf`, `nn`, `redist`, or `passthrough` (skip regridding — data must be on the model grid already, sizes are validated) |
+| `mapalgo` | String | Spatial regridding: `consd`, `bilinear`, `consf`, `nn`, `redist`, or `passthrough`. `passthrough` requires identical dimensions and ordered source/target coordinates, then copies without AXIS regridding. |
 | `data_model` | String | (Optional) AMIO NetCDF data model for reads: `enhanced`, `classic`, or `auto`. Default behavior is auto (`enhanced` first, then `classic` fallback on backend open failure). |
 | `variables` | List | Variable mappings between file and model |
 
@@ -560,6 +576,20 @@ Configuration for data streams that read external emission inventories and auxil
 | --- | --- | --- |
 | `file` | String | Variable name in NetCDF file |
 | `model` | String | Internal field name in CECE |
+| `levels` | Integer | (Optional) Number of nonspatial layers for this variable. Defaults to the global model `nz`; values must be positive. |
+
+For HEMCO 3.12.1 SoilNOx parity, the two biome-dependent fields use 24
+layers while scalar fields omit `levels`:
+
+```yaml
+variables:
+  - file: SOILNOX_LAND_FRACTIONS
+    model: soilnox_land_fractions
+    levels: 24
+  - file: SOILNOX_CANOPY_NOX
+    model: soilnox_canopy_nox
+    levels: 24
+```
 
 **Example:**
 ```yaml
