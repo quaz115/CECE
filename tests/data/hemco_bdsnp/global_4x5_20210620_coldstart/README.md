@@ -51,9 +51,12 @@ From `hemco_soilnox_global_4x5_20210620_1200.nc`:
 - Natural biome contribution:
   `InvSOILNOX_NO - EmisNO_Fert_a`
 
-The field named `EmisNO_Fert` is a duplicate total-extension diagnostic
-created by the explicit ext-104 diagnostics row. See
-`diagnostic_name_collision.txt`.
+The explicit ext-104 `EmisNO_Fert` diagnostic duplicates the total
+extension flux, so its name is misleading. Because that name was already
+occupied, HEMCO registered its internal fertilizer plus deposited-N field
+as `EmisNO_Fert_a`. CECE comparisons therefore use `InvSOILNOX_NO` for
+total SoilNOx and `EmisNO_Fert_a` for the fertilizer plus deposited-N
+contribution.
 
 From `hemco_soilnox_restart_4x5_20210620_1300.nc`:
 
