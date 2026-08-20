@@ -39,6 +39,9 @@
 
 namespace {
 
+// These helpers deliberately do not catch failures. Ingestion, physics, and
+// stacking exceptions must reach the cece_core_run C-ABI boundary below,
+// which reports them through rc=-1.
 void IngestEmissions(cece::CeceInternalData& d) {
     if (d.config.cece_data.streams.empty()) return;
     d.ingestor.IngestEmissionsInline(d.config.cece_data, d.import_state, d.nx, d.ny, d.nz);

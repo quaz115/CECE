@@ -5,8 +5,9 @@
  * @file hemco_soilnox_stateless.hpp
  * @brief Host-scalar HEMCO 3.12.1 SoilNOx equations for reference parity.
  *
- * This layer contains no I/O, regridding, masks, or persistent pulse/reservoir
- * state. Runtime/Kokkos integration is a separate milestone.
+ * This layer contains the host-scalar oracle used by reference tests. The
+ * production Kokkos integration is implemented by BdsnpScheme. Persistent
+ * pulse and deposited-N reservoir evolution remain outside this stateless layer.
  */
 
 #include <array>

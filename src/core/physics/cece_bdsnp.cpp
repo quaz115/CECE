@@ -280,10 +280,11 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
         const int nx = static_cast<int>(soil_nox.extent(0));
         const int ny = static_cast<int>(soil_nox.extent(1));
         auto require_scalar_shape = [nx, ny](const auto& view, const char* name) {
-            if (view.extent(0) != nx || view.extent(1) != ny || view.extent(2) < 1) {
+            if (view.extent(0) != nx || view.extent(1) != ny || view.extent(2) != 1) {
                 throw std::runtime_error(std::string("BdsnpScheme hemco_3_12_1 field has incompatible shape: ") + name);
             }
         };
+        require_scalar_shape(soil_nox, "soil_nox_emissions");
         require_scalar_shape(temperature, "temperature");
         require_scalar_shape(soil_moisture, "soil_moisture");
         require_scalar_shape(arid_fraction, "soilnox_arid_fraction");

@@ -178,6 +178,26 @@ TEST_F(HemcoSoilNoxRuntimeTest, MissingOrMalformedHemcoContractFailsLoudly) {
     EXPECT_THROW(missing_scheme.Run(import_state, export_state), std::runtime_error);
 }
 
+TEST_F(HemcoSoilNoxRuntimeTest, MultilevelScalarInputsAndOutputsFailLoudly) {
+    AddNeutralInputs();
+    import_state.fields["soil_moisture"] = MakeField("multilevel_soil_moisture", 2, 0.2);
+    BdsnpScheme multilevel_input_scheme;
+    multilevel_input_scheme.Initialize(HemcoConfig(), nullptr);
+    EXPECT_THROW(multilevel_input_scheme.Run(import_state, export_state), std::runtime_error);
+
+    AddNeutralInputs();
+    export_state.fields["soil_nox_emissions"] = MakeField("multilevel_soil_nox_emissions", 2, -1.0);
+    BdsnpScheme multilevel_primary_output_scheme;
+    multilevel_primary_output_scheme.Initialize(HemcoConfig(), nullptr);
+    EXPECT_THROW(multilevel_primary_output_scheme.Run(import_state, export_state), std::runtime_error);
+
+    AddNeutralInputs();
+    export_state.fields["soil_nox_fertilizer_emissions"] = MakeField("multilevel_soil_nox_fertilizer_emissions", 2, -1.0);
+    BdsnpScheme multilevel_component_output_scheme;
+    multilevel_component_output_scheme.Initialize(HemcoConfig(), nullptr);
+    EXPECT_THROW(multilevel_component_output_scheme.Run(import_state, export_state), std::runtime_error);
+}
+
 }  // namespace
 }  // namespace cece
 

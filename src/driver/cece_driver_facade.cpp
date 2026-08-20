@@ -14,7 +14,6 @@
 #include <tick/tick.hpp>
 #include <vector>
 
-#include "cece/cece_fatal.hpp"
 #include "cece/cece_helm_graph.hpp"
 #include "cece/cece_internal.hpp"
 #include "cece/cece_logger.hpp"
@@ -236,7 +235,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
         auto stream_view = cece_io_->GetFieldView(var_name);
         const int field_nlev = static_cast<int>(stream_view.extent(2));
         if (field_nlev < 1) {
-            LogFatal("[DRIVER FATAL] Field '" + var_name + "' has no configured levels");
+            CECE_LOG_ERROR("[DRIVER FATAL] Field '" + var_name + "' has no configured levels");
             return false;
         }
         std::vector<double> ingest_buffer;
@@ -301,7 +300,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
         }
 
         if (input_file_path.empty()) {
-            LogFatal("[DRIVER FATAL] Input file path not specified for stream variable '" + var_name + "' in configuration!");
+            CECE_LOG_ERROR("[DRIVER FATAL] Input file path not specified for stream variable '" + var_name + "' in configuration!");
             return false;
         }
         if (input_var_name.empty()) {
@@ -311,8 +310,9 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
         // Verify if the input file path exists and is accessible from this compute/login node
         std::error_code fs_ec;
         if (!fs::exists(input_file_path, fs_ec)) {
-            LogFatal("[DRIVER FATAL] File '" + input_file_path + "' does not exist or is unreadable on this node! (System error: " + fs_ec.message() +
-                     ")");
+            CECE_LOG_ERROR("[DRIVER FATAL] File '" + input_file_path + "' does not exist or is unreadable on this node! (System error: " +
+                           fs_ec.message() + ")");
+            return false;
         } else {
             CECE_LOG_DEBUG("[DRIVER] Input file '" + input_file_path + "' successfully verified on local filesystem.");
         }
@@ -369,7 +369,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                 // Write input manifest YAML (Rank 0 only to prevent parallel write conflicts)
                 std::ofstream m_file(read_manifest_path);
                 if (!m_file) {
-                    LogFatal("[DRIVER FATAL] Failed to create AMIO manifest YAML file '" + read_manifest_path + "'");
+                    CECE_LOG_ERROR("[DRIVER FATAL] Failed to create AMIO manifest YAML file '" + read_manifest_path + "'");
                     return false;
                 }
                 m_file << "backend: netcdf4\n"
@@ -767,8 +767,8 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
         if (!read_success) {
             std::string detail =
                 failure_detail.empty() ? ("open/init failed: rc=" + std::to_string(amio_rc) + " (" + amio_strerror(amio_rc) + ")") : failure_detail;
-            LogFatal("[FATAL ERROR] AMIO read failed for field '" + var_name + "' in file '" + input_file_path + "'. Reason: " + detail +
-                     ". Idealized fallback is disabled!");
+            CECE_LOG_ERROR("[FATAL ERROR] AMIO read failed for field '" + var_name + "' in file '" + input_file_path + "'. Reason: " + detail +
+                           ". Idealized fallback is disabled!");
             return false;
         } else {
             CECE_LOG_INFO("[DRIVER] AMIO read succeeded for field '" + var_name + "' - loaded real data from " + input_file_path);
@@ -776,7 +776,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
 
         const size_t expected_ingest_size = static_cast<size_t>(field_nlev) * nx_ * ny_;
         if (ingest_buffer.size() != expected_ingest_size) {
-            LogFatal("[DRIVER FATAL] Internal ingest buffer size mismatch for field '" + var_name + "'");
+            CECE_LOG_ERROR("[DRIVER FATAL] Internal ingest buffer size mismatch for field '" + var_name + "'");
             return false;
         }
 
@@ -788,7 +788,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                                 nx_ * ny_,   // n_elem
                                 &bridge_rc);
         if (bridge_rc != 0) {
-            LogFatal("[DRIVER FATAL] CECE ingestor rejected field '" + var_name + "' with rc=" + std::to_string(bridge_rc));
+            CECE_LOG_ERROR("[DRIVER FATAL] CECE ingestor rejected field '" + var_name + "' with rc=" + std::to_string(bridge_rc));
             return false;
         }
         CECE_LOG_INFO("[DRIVER] Ingested field '" + var_name + "' with shape " + std::to_string(nx_) + "x" + std::to_string(ny_) + "x" +
