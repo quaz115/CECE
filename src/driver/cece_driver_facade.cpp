@@ -310,8 +310,8 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
         // Verify if the input file path exists and is accessible from this compute/login node
         std::error_code fs_ec;
         if (!fs::exists(input_file_path, fs_ec)) {
-            CECE_LOG_ERROR("[DRIVER FATAL] File '" + input_file_path + "' does not exist or is unreadable on this node! (System error: " +
-                           fs_ec.message() + ")");
+            CECE_LOG_ERROR("[DRIVER FATAL] File '" + input_file_path +
+                           "' does not exist or is unreadable on this node! (System error: " + fs_ec.message() + ")");
             return false;
         } else {
             CECE_LOG_DEBUG("[DRIVER] Input file '" + input_file_path + "' successfully verified on local filesystem.");
