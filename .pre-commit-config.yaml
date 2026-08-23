@@ -1,7 +1,3 @@
-# Preserve byte-frozen HEMCO provenance artifacts tracked by SHA256SUMS.
-exclude: >-
-  ^tests/data/hemco_bdsnp/global_4x5_20210620_coldstart/(HEMCO_sa_Grid\.4x5\.rc|soilnox_drycoeff_buffer_fix\.patch)$
-
 repos:
   # General file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks

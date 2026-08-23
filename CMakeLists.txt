@@ -549,9 +549,9 @@ target_link_libraries(test_megan3 PRIVATE cece GTest::gtest_main rapidcheck rapi
 add_executable(test_bdsnp tests/test_bdsnp.cpp)
 target_link_libraries(test_bdsnp PRIVATE cece GTest::gtest rapidcheck rapidcheck_gtest)
 
-# HEMCO 3.12.1 production runtime parity tests
-add_executable(test_hemco_soilnox_runtime tests/test_hemco_soilnox_runtime.cpp)
-target_link_libraries(test_hemco_soilnox_runtime PRIVATE cece GTest::gtest)
+# Canonical BDSNP production-kernel regression tests
+add_executable(test_bdsnp_runtime tests/test_bdsnp_runtime.cpp)
+target_link_libraries(test_bdsnp_runtime PRIVATE cece GTest::gtest)
 
 if(ESMF_FOUND)
   add_executable(test_field_creation tests/test_field_creation.cpp)
@@ -767,7 +767,7 @@ gtest_discover_tests(test_megan3)
 gtest_discover_tests(test_cece_clock_properties)
 gtest_discover_tests(test_cece_clock_run_loop)
 gtest_discover_tests(test_bdsnp)
-gtest_discover_tests(test_hemco_soilnox_runtime)
+gtest_discover_tests(test_bdsnp_runtime)
 gtest_discover_tests(test_helm_cpp PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp;I_MPI_FABRICS=shm")
 gtest_discover_tests(test_regression_parity)
 

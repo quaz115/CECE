@@ -3,17 +3,19 @@
  * @brief Standalone BDSNP soil NO physics module implementation.
  *
  * Implements the Berkeley-Dalhousie Soil NO Parameterization (BDSNP) with
- * Yienger & Levy (1995) fallback. Replaces the existing SoilNoxScheme
- * ("soil_nox") registration with a more comprehensive soil NO model.
+ * Yienger & Levy (1995) fallback alongside the legacy SoilNoxScheme
+ * ("soil_nox") registration.
  *
  * Two algorithms are supported, selectable via `soil_no_method` YAML key:
  *   - "yl95": Yienger & Levy (1995) — soil temperature response, soil moisture
  *     pulse, canopy reduction factor (identical to existing SoilNoxScheme)
- *   - "bdsnp" (default): biome-specific base emission factors, soil moisture
- *     dependence, nitrogen deposition fertilization, canopy reduction
+ *   - "bdsnp" (default): validated effective-input BDSNP arithmetic with
+ *     24-biome weighting, temperature/moisture responses, canopy reduction,
+ *     pulse scaling, fertilizer, and deposited nitrogen
  *
- * Both modes set soil NO to zero when soil temperature < 0°C (273.15 K).
- * Writes to export field "soil_nox_emissions" for consumption by MEGAN3.
+ * The canonical mode accepts either direct soil temperature or surface air
+ * temperature with its biome/moisture conversion. YL95 uses soil temperature.
+ * Both write "soil_nox_emissions" for consumption by MEGAN3.
  *
  * References:
  * - Yienger, J.J. and H. Levy II (1995), JGR, 100(D6), 11447-11464.
@@ -29,6 +31,7 @@
 #include <Kokkos_Core.hpp>
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <iostream>
 #include <stdexcept>
 
@@ -79,67 +82,6 @@ double bdsnp_soil_wet_term(double gw, double wet_c1, double wet_c2) {
 }
 
 // ============================================================================
-// BDSNP-specific inline helper functions
-// ============================================================================
-
-/**
- * @brief Compute BDSNP soil moisture dependence factor.
- *
- * Piecewise linear response to soil moisture for the BDSNP algorithm.
- *
- * @param soil_moisture Soil moisture fraction [0-1]
- * @return Soil moisture dependence factor (dimensionless, non-negative)
- */
-KOKKOS_INLINE_FUNCTION
-double bdsnp_moisture_factor(double soil_moisture) {
-    // Piecewise linear: ramp up from 0 at SM=0 to 1 at SM=0.3,
-    // then decrease linearly to 0.5 at SM=1.0
-    if (soil_moisture <= 0.0) {
-        return 0.0;
-    }
-    if (soil_moisture <= 0.3) {
-        return soil_moisture / 0.3;
-    }
-    // Linear decrease from 1.0 at SM=0.3 to 0.5 at SM=1.0
-    return 1.0 - 0.5 * (soil_moisture - 0.3) / 0.7;
-}
-
-/**
- * @brief Compute nitrogen deposition fertilization factor.
- *
- * Enhances soil NO emissions based on nitrogen deposition rates.
- *
- * @param ndep Nitrogen deposition rate [kg N/m²/s]
- * @param fert_emission_factor Fertilizer emission factor scaling
- * @param wet_dep_scaling Wet deposition scaling factor
- * @param dry_dep_scaling Dry deposition scaling factor
- * @return Fertilization enhancement factor (dimensionless, >= 1.0)
- */
-KOKKOS_INLINE_FUNCTION
-double bdsnp_ndep_factor(double ndep, double fert_emission_factor, double wet_dep_scaling, double dry_dep_scaling) {
-    // Combined wet + dry deposition contribution
-    double dep_contribution = ndep * (wet_dep_scaling + dry_dep_scaling);
-    return 1.0 + fert_emission_factor * dep_contribution;
-}
-
-/**
- * @brief Compute canopy reduction factor for soil NO.
- *
- * Reduces soil NO emissions based on canopy uptake, parameterized by LAI.
- *
- * @param lai Leaf area index [m²/m²]
- * @return Canopy reduction factor [0-1]
- */
-KOKKOS_INLINE_FUNCTION
-double bdsnp_canopy_reduction(double lai) {
-    if (lai <= 0.0) {
-        return 1.0;
-    }
-    // Exponential reduction with LAI (Beer-Lambert-like)
-    return std::exp(-0.24 * lai);
-}
-
-// ============================================================================
 // Initialize
 // ============================================================================
 
@@ -147,14 +89,20 @@ void BdsnpScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* di
     // Call base class to parse input_mapping, output_mapping, diagnostics
     BasePhysicsScheme::Initialize(config, diag_manager);
 
-    // ---- Read soil_no_method (default "bdsnp", fallback "yl95") ----
+    // ---- Read soil_no_method (default "bdsnp") ----
     soil_no_method_ = "bdsnp";
     if (config["soil_no_method"]) {
         soil_no_method_ = config["soil_no_method"].as<std::string>();
     }
-    if (soil_no_method_ != "bdsnp" && soil_no_method_ != "yl95" && soil_no_method_ != "hemco_3_12_1") {
-        std::cout << "BdsnpScheme: WARNING - Unknown soil_no_method '" << soil_no_method_ << "', falling back to 'bdsnp'\n";
-        soil_no_method_ = "bdsnp";
+    if (soil_no_method_ != "bdsnp" && soil_no_method_ != "yl95") {
+        throw std::invalid_argument("BdsnpScheme: unknown soil_no_method '" + soil_no_method_ + "'; expected 'bdsnp' or 'yl95'");
+    }
+
+    for (const char* removed_option : {"fert_emission_factor", "wet_dep_scaling", "dry_dep_scaling", "pulse_decay_constant"}) {
+        if (config[removed_option]) {
+            throw std::invalid_argument(std::string("BdsnpScheme: removed simplified-BDSNP option '") + removed_option +
+                                        "' is not valid for canonical bdsnp");
+        }
     }
 
     use_soil_temperature_ = false;
@@ -209,36 +157,6 @@ void BdsnpScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* di
         std::cout << "BdsnpScheme: Using default wet_c2 = " << wet_c2_ << "\n";
     }
 
-    // ---- Read BDSNP parameters ----
-    fert_emission_factor_ = 1.0;
-    wet_dep_scaling_ = 1.0;
-    dry_dep_scaling_ = 1.0;
-    pulse_decay_constant_ = 0.5;
-
-    if (config["fert_emission_factor"]) {
-        fert_emission_factor_ = config["fert_emission_factor"].as<double>();
-    } else {
-        std::cout << "BdsnpScheme: Using default fert_emission_factor = " << fert_emission_factor_ << "\n";
-    }
-
-    if (config["wet_dep_scaling"]) {
-        wet_dep_scaling_ = config["wet_dep_scaling"].as<double>();
-    } else {
-        std::cout << "BdsnpScheme: Using default wet_dep_scaling = " << wet_dep_scaling_ << "\n";
-    }
-
-    if (config["dry_dep_scaling"]) {
-        dry_dep_scaling_ = config["dry_dep_scaling"].as<double>();
-    } else {
-        std::cout << "BdsnpScheme: Using default dry_dep_scaling = " << dry_dep_scaling_ << "\n";
-    }
-
-    if (config["pulse_decay_constant"]) {
-        pulse_decay_constant_ = config["pulse_decay_constant"].as<double>();
-    } else {
-        std::cout << "BdsnpScheme: Using default pulse_decay_constant = " << pulse_decay_constant_ << "\n";
-    }
-
     std::cout << "BdsnpScheme: Initialized with soil_no_method='" << soil_no_method_ << "'\n";
 }
 
@@ -247,10 +165,9 @@ void BdsnpScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* di
 // ============================================================================
 
 void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_state) {
-    if (soil_no_method_ == "hemco_3_12_1") {
-        // Exact HEMCO 3.12.1 stateless cell arithmetic. Stateful quantities
-        // and upstream canopy/deposited-N calculations are explicit inputs so
-        // they can first be checked against a frozen HEMCO global reference.
+    if (soil_no_method_ == "bdsnp") {
+        // Validated stateless BDSNP cell arithmetic. Stateful quantities and
+        // upstream canopy/deposited-N calculations are explicit inputs.
         auto temperature = ResolveImport(use_soil_temperature_ ? "soil_temperature" : "surface_temperature", import_state);
         auto soil_moisture = ResolveImport("soil_moisture", import_state);
         auto land_fractions = ResolveImport("soilnox_land_fractions", import_state);
@@ -271,7 +188,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
             solar_zenith_cosine.data() == nullptr || soil_fertilizer.data() == nullptr || deposited_nitrogen.data() == nullptr ||
             pulse_factor.data() == nullptr || soil_nox.data() == nullptr || fertilizer_nox.data() == nullptr) {
             throw std::runtime_error(
-                "BdsnpScheme hemco_3_12_1 mode requires surface/soil temperature, soil_moisture, "
+                "BdsnpScheme bdsnp mode requires surface/soil temperature, soil_moisture, "
                 "soilnox_land_fractions[24], soilnox_arid_fraction, soilnox_nonarid_fraction, "
                 "leaf_area_index, soilnox_canopy_nox[24], wind_speed_squared, solar_zenith_cosine, "
                 "soil_fertilizer, deposited_nitrogen, soilnox_pulse_factor, and both SoilNOx exports");
@@ -281,7 +198,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
         const int ny = static_cast<int>(soil_nox.extent(1));
         auto require_scalar_shape = [nx, ny](const auto& view, const char* name) {
             if (view.extent(0) != nx || view.extent(1) != ny || view.extent(2) != 1) {
-                throw std::runtime_error(std::string("BdsnpScheme hemco_3_12_1 field has incompatible shape: ") + name);
+                throw std::runtime_error(std::string("BdsnpScheme bdsnp field has incompatible shape: ") + name);
             }
         };
         require_scalar_shape(soil_nox, "soil_nox_emissions");
@@ -298,7 +215,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
         require_scalar_shape(fertilizer_nox, "soil_nox_fertilizer_emissions");
         if (land_fractions.extent(0) != nx || land_fractions.extent(1) != ny || land_fractions.extent(2) != 24 || canopy_nox.extent(0) != nx ||
             canopy_nox.extent(1) != ny || canopy_nox.extent(2) != 24) {
-            throw std::runtime_error("BdsnpScheme hemco_3_12_1 requires exactly 24 land-fraction and canopy-NOx layers");
+            throw std::runtime_error("BdsnpScheme bdsnp requires exactly 24 land-fraction and canopy-NOx layers");
         }
 
         const Kokkos::Array<double, 24> a_biome = {0.00, 0.00, 0.00, 0.00, 0.00, 0.06, 0.09, 0.09, 0.01, 0.84, 0.84, 0.24,
@@ -320,7 +237,7 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
         constexpr double cubic_0 = static_cast<double>(196.149F);
 
         Kokkos::parallel_for(
-            "BdsnpKernel_HEMCO_3_12_1", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
+            "BdsnpKernel_BDSNP", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
             KOKKOS_LAMBDA(int i, int j) {
                 soil_nox(i, j, 0) = 0.0;
                 fertilizer_nox(i, j, 0) = 0.0;
@@ -403,102 +320,29 @@ void BdsnpScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     int nx = static_cast<int>(soil_nox.extent(0));
     int ny = static_cast<int>(soil_nox.extent(1));
 
-    if (soil_no_method_ == "yl95") {
-        // ================================================================
-        // YL95 mode: identical algorithm to existing SoilNoxScheme
-        // ================================================================
-        const double MW_NO = 30.0;
-        const double UNITCONV = 1.0e-12 / 14.0 * MW_NO;  // ng N -> kg NO
-        double a_biome_wet = a_biome_wet_;
-        double tc_max = tc_max_;
-        double exp_coeff = exp_coeff_;
-        double wet_c1 = wet_c1_;
-        double wet_c2 = wet_c2_;
+    // YL95 mode: identical algorithm to the existing SoilNoxScheme.
+    const double MW_NO = 30.0;
+    const double UNITCONV = 1.0e-12 / 14.0 * MW_NO;  // ng N -> kg NO
+    double a_biome_wet = a_biome_wet_;
+    double tc_max = tc_max_;
+    double exp_coeff = exp_coeff_;
+    double wet_c1 = wet_c1_;
+    double wet_c2 = wet_c2_;
 
-        Kokkos::parallel_for(
-            "BdsnpKernel_YL95", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}), KOKKOS_LAMBDA(int i, int j) {
-                double tc = soil_temp(i, j, 0) - 273.15;
-                double gw = soil_moisture(i, j, 0);
+    Kokkos::parallel_for(
+        "BdsnpKernel_YL95", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}), KOKKOS_LAMBDA(int i, int j) {
+            double tc = soil_temp(i, j, 0) - 273.15;
+            double gw = soil_moisture(i, j, 0);
 
-                // Set to zero if soil temp < 0°C
-                if (tc <= 0.0) {
-                    soil_nox(i, j, 0) = 0.0;
-                    return;
-                }
+            if (tc <= 0.0) {
+                soil_nox(i, j, 0) = 0.0;
+                return;
+            }
 
-                double t_term = bdsnp_soil_temp_term(tc, tc_max, exp_coeff);
-                double w_term = bdsnp_soil_wet_term(gw, wet_c1, wet_c2);
-
-                // Pulse factor placeholder
-                double pulse = 1.0;
-
-                // Total emission [kg NO/m2/s]
-                double emiss = a_biome_wet * UNITCONV * t_term * w_term * pulse;
-                soil_nox(i, j, 0) = emiss;
-            });
-    } else {
-        // ================================================================
-        // BDSNP mode: biome-specific emission with N-dep fertilization
-        // ================================================================
-
-        // Resolve additional BDSNP-specific import fields
-        auto ndep = ResolveImport("nitrogen_deposition", import_state);
-        auto land_use = ResolveImport("land_use_type", import_state);
-        auto lai = ResolveImport("leaf_area_index", import_state);
-        auto biome_ef = ResolveImport("biome_emission_factors", import_state);
-
-        // BDSNP can proceed with partial fields — use defaults where missing
-        bool has_ndep = (ndep.data() != nullptr);
-        bool has_land_use = (land_use.data() != nullptr);
-        bool has_lai = (lai.data() != nullptr);
-        bool has_biome_ef = (biome_ef.data() != nullptr);
-
-        double fert_ef = fert_emission_factor_;
-        double wet_dep_s = wet_dep_scaling_;
-        double dry_dep_s = dry_dep_scaling_;
-        double pulse_decay = pulse_decay_constant_;
-
-        const double MW_NO = 30.0;
-        const double UNITCONV = 1.0e-12 / 14.0 * MW_NO;  // ng N -> kg NO
-
-        Kokkos::parallel_for(
-            "BdsnpKernel_BDSNP", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
-            KOKKOS_LAMBDA(int i, int j) {
-                double tc = soil_temp(i, j, 0) - 273.15;
-
-                // Set to zero if soil temp < 0°C
-                if (tc <= 0.0) {
-                    soil_nox(i, j, 0) = 0.0;
-                    return;
-                }
-
-                double sm = soil_moisture(i, j, 0);
-
-                // Biome-specific base emission factor
-                double base_ef = has_biome_ef ? biome_ef(i, j, 0) : 1.0;
-
-                // Temperature response (exponential, same form as YL95)
-                double t_response = std::exp(0.103 * std::min(30.0, tc));
-
-                // Soil moisture dependence (BDSNP piecewise)
-                double sm_factor = bdsnp_moisture_factor(sm);
-
-                // Nitrogen deposition fertilization
-                double ndep_val = has_ndep ? ndep(i, j, 0) : 0.0;
-                double fert_factor = bdsnp_ndep_factor(ndep_val, fert_ef, wet_dep_s, dry_dep_s);
-
-                // Canopy reduction
-                double lai_val = has_lai ? lai(i, j, 0) : 0.0;
-                double canopy_red = bdsnp_canopy_reduction(lai_val);
-
-                // Pulse decay (simplified — stateless placeholder)
-                double pulse = std::exp(-pulse_decay * 0.0);  // No prior rain info
-
-                // Total BDSNP emission [kg NO/m2/s]
-                double emiss = base_ef * UNITCONV * t_response * sm_factor * fert_factor * canopy_red * pulse;
-                soil_nox(i, j, 0) = emiss;
-            });
-    }
+            double t_term = bdsnp_soil_temp_term(tc, tc_max, exp_coeff);
+            double w_term = bdsnp_soil_wet_term(gw, wet_c1, wet_c2);
+            soil_nox(i, j, 0) = a_biome_wet * UNITCONV * t_term * w_term;
+        });
 
     Kokkos::fence();
     MarkModified("soil_nox_emissions", export_state);

@@ -27,7 +27,6 @@
 #include "cece/cece_provenance.hpp"
 #include "cece/cece_stacking_engine.hpp"
 #include "cece/cece_state.hpp"
-#include "hemco_soilnox_reference_tests.hpp"
 
 namespace cece {
 

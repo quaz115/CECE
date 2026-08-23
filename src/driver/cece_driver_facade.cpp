@@ -673,29 +673,77 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                             }
                         }
 
+                        // Regridding is decomposed into rank-local latitude bands, but
+                        // CECE's current downstream contract is replicated: stream_view,
+                        // CeceImportState, the ingestor cache, physics, and output all
+                        // consume nx_ x ny_ x levels fields on every rank. Assemble each
+                        // layer globally before populating those views. Removing this
+                        // collective requires a coordinated distributed-state/output
+                        // redesign rather than a local driver change.
+                        const bool distributed_regrid = mpi_initialized && mpi_size > 1 && comm_c_ != MPI_COMM_NULL;
                         std::vector<double> full_dst(static_cast<size_t>(field_nlev) * target_spatial, 0.0);
                         bool all_layers_regridded = true;
                         for (int lev = 0; lev < field_nlev; ++lev) {
                             std::vector<double> local_dst;
                             const double* source_layer = src.data() + static_cast<size_t>(lev) * source_spatial;
-                            if (!cece::io::apply_regrid_plan(plan, /*time_offset=*/0, /*is_float=*/false, source_layer, file_nx, file_ny, nx_,
-                                                             local_dst)) {
+                            const bool local_regrid_succeeded = cece::io::apply_regrid_plan(plan, /*time_offset=*/0, /*is_float=*/false, source_layer,
+                                                                                            file_nx, file_ny, nx_, local_dst);
+                            const size_t expected_local_size = static_cast<size_t>(j1 - j0) * nx_;
+                            const bool local_layer_ready = local_regrid_succeeded && local_dst.size() == expected_local_size;
+                            bool all_ranks_ready = local_layer_ready;
+
+                            // All ranks must make the same decision before entering the
+                            // gather. A rank-local early exit here would strand peers in
+                            // MPI_Allgatherv.
+                            if (distributed_regrid) {
+                                const int local_ready = local_layer_ready ? 1 : 0;
+                                int global_ready = 0;
+                                const int ready_rc = MPI_Allreduce(&local_ready, &global_ready, 1, MPI_INT, MPI_MIN, comm_c_);
+                                if (ready_rc != MPI_SUCCESS) {
+                                    failure_detail =
+                                        "MPI_Allreduce failed while validating rank-local regrid bands (error code " + std::to_string(ready_rc) + ")";
+                                    all_layers_regridded = false;
+                                    break;
+                                }
+                                all_ranks_ready = global_ready == 1;
+                            }
+
+                            if (!all_ranks_ready) {
+                                failure_detail = "rank-local regrid failed or produced an unexpected destination-band size";
                                 all_layers_regridded = false;
                                 break;
                             }
 
                             double* destination_layer = full_dst.data() + static_cast<size_t>(lev) * target_spatial;
-                            if (mpi_initialized && mpi_size > 1 && comm_c_ != MPI_COMM_NULL) {
-                                MPI_Allgatherv(local_dst.data(), counts[mpi_rank], MPI_DOUBLE, destination_layer, counts.data(), displs.data(),
-                                               MPI_DOUBLE, comm_c_);
+                            if (distributed_regrid) {
+                                const int gather_rc = MPI_Allgatherv(local_dst.data(), counts[mpi_rank], MPI_DOUBLE, destination_layer, counts.data(),
+                                                                     displs.data(), MPI_DOUBLE, comm_c_);
+                                const int local_gather_ok = gather_rc == MPI_SUCCESS ? 1 : 0;
+                                int global_gather_ok = 0;
+                                const int gather_status_rc = MPI_Allreduce(&local_gather_ok, &global_gather_ok, 1, MPI_INT, MPI_MIN, comm_c_);
+                                if (gather_status_rc != MPI_SUCCESS || global_gather_ok != 1) {
+                                    if (gather_status_rc != MPI_SUCCESS) {
+                                        failure_detail = "MPI_Allreduce failed while synchronizing MPI_Allgatherv status (error code " +
+                                                         std::to_string(gather_status_rc) + ")";
+                                    } else {
+                                        failure_detail =
+                                            "MPI_Allgatherv failed on one or more ranks while assembling the replicated destination field "
+                                            "(local error code " +
+                                            std::to_string(gather_rc) + ")";
+                                    }
+                                    all_layers_regridded = false;
+                                    break;
+                                }
                             } else {
                                 std::copy(local_dst.begin(), local_dst.end(), destination_layer + static_cast<size_t>(j0) * nx_);
                             }
                         }
 
                         if (!all_layers_regridded) {
-                            CECE_LOG_DEBUG("[DRIVER] apply_regrid_plan returned false!");
-                            failure_detail = "regrid weight application failed";
+                            CECE_LOG_DEBUG("[DRIVER] rank-local regrid or replicated-field assembly failed!");
+                            if (failure_detail.empty()) {
+                                failure_detail = "regrid weight application failed";
+                            }
                         } else {
                             auto h_view = Kokkos::create_mirror_view(stream_view);
                             for (int lev = 0; lev < field_nlev; ++lev) {
