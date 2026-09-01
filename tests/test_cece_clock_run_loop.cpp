@@ -109,6 +109,20 @@ TEST(StageOrderTest, DataStreamsPrecedePhysicsAndStackingRegardlessOfRegistratio
     EXPECT_EQ(DueNames(step), expected);
 }
 
+TEST(StageOrderTest, InvalidComponentTypeFailsClosedWithComponentName) {
+    const std::vector<ClockComponent> components = {
+        {static_cast<ComponentType>(255), "invalid_component", 300},
+    };
+    CeceClock clock("2020-07-15T00:00:00", "2020-07-15T01:00:00", 300, components);
+
+    try {
+        (void)clock.Advance();
+        FAIL() << "Expected invalid component type to be rejected";
+    } catch (const std::invalid_argument& error) {
+        EXPECT_STREQ(error.what(), "Component \"invalid_component\" has an invalid ComponentType value.");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Fixture: Mixed-interval clock
 // ---------------------------------------------------------------------------

@@ -80,22 +80,22 @@ TEST_F(CeceUtilsTest, Hemco4x5CoordinatesAreTheSameOrderedGrid) {
     lats.push_back(89.0);
     ASSERT_EQ(lats.size(), static_cast<size_t>(ny));
 
-    EXPECT_TRUE(io::same_grid_coordinates(nx, ny, lons, lats, lons, lats));
+    EXPECT_TRUE(io::same_spherical_grid_coordinates(nx, ny, lons, lats, lons, lats));
 
     // A 0..360 convention is equivalent only when cell ordering is unchanged.
     std::vector<double> lons_360 = lons;
     for (double& lon : lons_360) {
         if (lon < 0.0) lon += 360.0;
     }
-    EXPECT_TRUE(io::same_grid_coordinates(nx, ny, lons_360, lats, lons, lats));
+    EXPECT_TRUE(io::same_spherical_grid_coordinates(nx, ny, lons_360, lats, lons, lats));
 
     std::vector<double> cyclically_shifted_lons = lons;
     std::rotate(cyclically_shifted_lons.begin(), cyclically_shifted_lons.begin() + 1, cyclically_shifted_lons.end());
-    EXPECT_FALSE(io::same_grid_coordinates(nx, ny, cyclically_shifted_lons, lats, lons, lats));
+    EXPECT_FALSE(io::same_spherical_grid_coordinates(nx, ny, cyclically_shifted_lons, lats, lons, lats));
 
     std::vector<double> shifted_lats = lats;
     shifted_lats.front() = -90.0;
-    EXPECT_FALSE(io::same_grid_coordinates(nx, ny, lons, shifted_lats, lons, lats));
+    EXPECT_FALSE(io::same_spherical_grid_coordinates(nx, ny, lons, shifted_lats, lons, lats));
 }
 
 TEST_F(CeceUtilsTest, IdentityRegridPlanCopiesTheOwnedRowsExactly) {
@@ -119,6 +119,20 @@ TEST_F(CeceUtilsTest, IdentityRegridPlanCopiesTheOwnedRowsExactly) {
     const std::vector<float> source_with_offset = {-999.0F, 0.0F, 1.0F, 2.0F, 10.0F, 11.0F, 12.0F, 20.0F, 21.0F, 22.0F, 30.0F, 31.0F, 32.0F};
     ASSERT_TRUE(io::apply_regrid_plan(plan, 1, true, source_with_offset.data(), 3, 4, 3, destination));
     EXPECT_EQ(destination, source);
+}
+
+TEST_F(CeceUtilsTest, IdentityRegridPlanRejectsDimensionsDifferentFromVerifiedGrid) {
+    io::RegridPlan plan;
+    plan.file_nx = 3;
+    plan.file_ny = 4;
+    plan.j0 = 0;
+    plan.j1 = 4;
+    plan.identity = true;
+    plan.built = true;
+
+    const std::vector<double> source(12, 1.0);
+    std::vector<double> destination;
+    EXPECT_FALSE(io::apply_regrid_plan(plan, 0, false, source.data(), 2, 4, 3, destination));
 }
 
 TEST_F(CeceUtilsTest, StandaloneWriterPreservesHemco4x5CoordinateCenters) {

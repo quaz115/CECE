@@ -38,12 +38,12 @@ struct RegridPlan {
     bool built = false;                                           ///< true once weights are generated
 };
 
-/// Return true when source and target coordinates describe the same ordered
-/// grid. Rectilinear (lon[nx], lat[ny]) and flattened curvilinear
+/// Return true when source and target longitude/latitude coordinates describe
+/// the same ordered spherical grid. Rectilinear (lon[nx], lat[ny]) and flattened curvilinear
 /// (lon[nx*ny], lat[nx*ny]) representations may be mixed. Longitude values
 /// that differ only by a 360-degree convention are considered equal.
-bool same_grid_coordinates(int nx, int ny, const std::vector<double>& source_lons, const std::vector<double>& source_lats,
-                           const std::vector<double>& target_lons, const std::vector<double>& target_lats, double tolerance = 1.0e-10);
+bool same_spherical_grid_coordinates(int nx, int ny, const std::vector<double>& source_lons, const std::vector<double>& source_lats,
+                                     const std::vector<double>& target_lons, const std::vector<double>& target_lats, double tolerance = 1.0e-10);
 
 /// Build the interpolation weights for a rank-local destination row band
 /// [j0, j1). Reads the source `lon`/`lat` coordinate variables from the open

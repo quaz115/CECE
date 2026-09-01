@@ -8,7 +8,7 @@ namespace cece {
 /**
  * @class BdsnpScheme
  * @brief Standalone soil NO physics module implementing the Berkeley-Dalhousie
- * Soil NO Parameterization (BDSNP) with YL95 fallback.
+ * Soil NOx Parameterization (BDSNP) with YL95 fallback.
  *
  * Provides a comprehensive soil-NO model alongside the legacy SoilNoxScheme
  * ("soil_nox"). Supports two algorithms selectable via the `soil_no_method`
@@ -16,8 +16,7 @@ namespace cece {
  *   - "bdsnp" (default): validated effective-input BDSNP calculation with
  *     24-biome weighting, temperature and moisture responses, canopy reduction,
  *     pulse scaling, fertilizer, and deposited nitrogen
- *   - "yl95": Yienger & Levy (1995) soil temperature response, soil moisture
- *     pulse, canopy reduction factor
+ *   - "yl95": Yienger & Levy (1995) temperature and moisture response
  *
  * BDSNP pulse, canopy, fertilizer, and deposited-nitrogen terms are supplied as
  * effective input fields. Persistent pulse and deposited-nitrogen reservoir
@@ -35,15 +34,22 @@ class BdsnpScheme : public BasePhysicsScheme {
     void Run(CeceImportState& import_state, CeceExportState& export_state) override;
 
    private:
-    std::string soil_no_method_ = "bdsnp";  // "bdsnp" or "yl95"
-    bool use_soil_temperature_ = false;
+    enum class SoilNoMethod { kBdsnp, kYl95 };
 
-    // YL95 parameters (reused from existing SoilNoxScheme)
-    double a_biome_wet_ = 0.5;
-    double tc_max_ = 30.0;
-    double exp_coeff_ = 0.103;
-    double wet_c1_ = 5.5;
-    double wet_c2_ = -5.55;
+    struct Yl95Parameters {
+        double biome_coefficient_wet = 0.5;
+        double temperature_limit = 30.0;
+        double temperature_exponential_coefficient = 0.103;
+        double wetness_coefficient_1 = 5.5;
+        double wetness_coefficient_2 = -5.55;
+    };
+
+    void RunBdsnp(CeceImportState& import_state, CeceExportState& export_state);
+    void RunYl95(CeceImportState& import_state, CeceExportState& export_state);
+
+    SoilNoMethod soil_no_method_ = SoilNoMethod::kBdsnp;
+    bool use_soil_temperature_ = false;
+    Yl95Parameters yl95_parameters_;
 };
 
 }  // namespace cece

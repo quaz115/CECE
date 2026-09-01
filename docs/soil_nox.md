@@ -1,8 +1,9 @@
-# BDSNP Soil NO Emissions
+# Berkeley-Dalhousie Soil NOx Parameterization (BDSNP) Emissions
 
 ## Overview
 
-The native C++ `bdsnp` scheme computes soil nitrogen oxide (NO) emissions and
+The native C++ `bdsnp` scheme implements the Berkeley-Dalhousie Soil NOx
+Parameterization (BDSNP), computes soil nitrogen oxide (NO) emissions, and
 writes them to the export state for consumption by MEGAN3 or other schemes.
 Two methods are supported through `soil_no_method`:
 
@@ -13,13 +14,18 @@ Two methods are supported through `soil_no_method`:
 - **`yl95`** — the Yienger and Levy (1995) empirical calculation retained as a
   lightweight fallback.
 
-The former `hemco_3_12_1` selector has been removed. Its validated arithmetic
-is now the canonical `bdsnp` method.
+The scheme consumes prepared effective fields.
 
 References:
 
-- Hudman et al. (2012), Berkeley-Dalhousie Soil NO Parameterization
-- Yienger, J.J. and H. Levy II (1995), *JGR*, 100(D6), 11447–11464
+- Hudman, R. C., et al. (2012), “Steps towards a mechanistic model of global
+  soil nitric oxide emissions: implementation and space based-constraints,”
+  *Atmospheric Chemistry and Physics*, 12, 7779–7795,
+  [doi:10.5194/acp-12-7779-2012](https://doi.org/10.5194/acp-12-7779-2012).
+- Yienger, J. J. and H. Levy II (1995), “Empirical model of global soil-biogenic
+  NOx emissions,” *Journal of Geophysical Research: Atmospheres*, 100(D6),
+  11447–11464,
+  [doi:10.1029/95JD00370](https://doi.org/10.1029/95JD00370).
 
 ## Registration Names
 
@@ -99,8 +105,8 @@ Missing fields or incompatible shapes cause the scheme to fail.
 | `soilnox_pulse_factor` | 1 | 1 | Effective wetting-pulse multiplier |
 
 `soilnox_canopy_nox`, `soil_fertilizer`, `deposited_nitrogen`, and
-`soilnox_pulse_factor` are upstream effective inputs. This stateless scheme
-does not yet derive them from raw canopy/deposition/precipitation inputs.
+`soilnox_pulse_factor` are upstream effective inputs rather than raw
+canopy, deposition, or precipitation fields.
 
 ### Export fields
 
@@ -123,9 +129,6 @@ For each grid cell, the scheme:
 6. Applies the supplied pulse factor and biome fraction, then sums all 24
    contributions.
 7. Writes the total and fertilizer-plus-deposited-N component separately.
-
-The arithmetic is stateless. Evolution of wetting-pulse state, the deposited-N
-reservoir, and restart write/restore equivalence remain follow-up work.
 
 ### YL95 mode
 

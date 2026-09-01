@@ -171,6 +171,8 @@ StepResult CeceClock::Advance() {
                 case ComponentType::kStackingEngine:
                     stacking.push_back(&cs.component);
                     break;
+                default:
+                    throw std::invalid_argument("Component \"" + cs.component.name + "\" has an invalid ComponentType value.");
             }
             cs.last_executed_at = elapsed_seconds_;
         }

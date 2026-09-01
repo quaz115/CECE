@@ -102,6 +102,51 @@ TEST(BdsnpSchemeTest, SupportedMethodsInitializeAndUnknownMethodsFail) {
     EXPECT_THROW(obsolete.Initialize(removed_option, nullptr), std::invalid_argument);
 }
 
+TEST(BdsnpSchemeTest, CanonicalMethodRejectsEveryYl95OnlyCoefficientAlias) {
+    for (const char* option : {"biome_coefficient_wet", "a_biome_wet", "temp_limit", "tc_max", "temp_exp_coeff", "exp_coeff", "wet_coeff_1", "wet_c1",
+                               "wet_coeff_2", "wet_c2"}) {
+        YAML::Node config;
+        config["soil_no_method"] = "bdsnp";
+        config[option] = 1.0;
+
+        BdsnpScheme scheme;
+        try {
+            scheme.Initialize(config, nullptr);
+            FAIL() << "Expected canonical BDSNP to reject YL95-only option " << option;
+        } catch (const std::invalid_argument& error) {
+            EXPECT_NE(std::string(error.what()).find(option), std::string::npos);
+        }
+    }
+}
+
+TEST(BdsnpSchemeTest, CanonicalMethodDoesNotLogYl95Defaults) {
+    YAML::Node config;
+    config["soil_no_method"] = "bdsnp";
+
+    testing::internal::CaptureStdout();
+    BdsnpScheme scheme;
+    scheme.Initialize(config, nullptr);
+    const std::string output = testing::internal::GetCapturedStdout();
+
+    EXPECT_EQ(output.find("Using default a_biome_wet"), std::string::npos);
+    EXPECT_EQ(output.find("Using default tc_max"), std::string::npos);
+    EXPECT_EQ(output.find("Using default exp_coeff"), std::string::npos);
+    EXPECT_EQ(output.find("Using default wet_c1"), std::string::npos);
+    EXPECT_EQ(output.find("Using default wet_c2"), std::string::npos);
+}
+
+TEST(BdsnpSchemeTest, Yl95MethodAcceptsCoefficientAliases) {
+    for (const char* option : {"biome_coefficient_wet", "a_biome_wet", "temp_limit", "tc_max", "temp_exp_coeff", "exp_coeff", "wet_coeff_1", "wet_c1",
+                               "wet_coeff_2", "wet_c2"}) {
+        YAML::Node config;
+        config["soil_no_method"] = "yl95";
+        config[option] = 1.0;
+
+        BdsnpScheme scheme;
+        EXPECT_NO_THROW(scheme.Initialize(config, nullptr)) << "YL95 option: " << option;
+    }
+}
+
 TEST(BdsnpSchemeTest, DiagnosticFieldsRegisterWhenEnabled) {
     YAML::Node config;
     config["soil_no_method"] = "bdsnp";
@@ -113,6 +158,25 @@ TEST(BdsnpSchemeTest, DiagnosticFieldsRegisterWhenEnabled) {
     CeceDiagnosticManager diagnostics;
     BdsnpScheme scheme;
     EXPECT_NO_THROW(scheme.Initialize(config, &diagnostics));
+}
+
+TEST(BdsnpSchemeTest, Yl95MissingFieldsReportEveryRequiredName) {
+    CeceImportState import_state;
+    CeceExportState export_state;
+    YAML::Node config;
+    config["soil_no_method"] = "yl95";
+
+    BdsnpScheme scheme;
+    scheme.Initialize(config, nullptr);
+    try {
+        scheme.Run(import_state, export_state);
+        FAIL() << "Expected missing YL95 fields to fail";
+    } catch (const std::runtime_error& error) {
+        const std::string message = error.what();
+        EXPECT_NE(message.find("soil_temperature"), std::string::npos);
+        EXPECT_NE(message.find("soil_moisture"), std::string::npos);
+        EXPECT_NE(message.find("soil_nox_emissions"), std::string::npos);
+    }
 }
 
 RC_GTEST_PROP(BdsnpProperty, Yl95FreezingProducesExactlyZero, ()) {

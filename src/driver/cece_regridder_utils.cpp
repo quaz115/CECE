@@ -12,6 +12,8 @@
 #include <iostream>
 #include <sstream>
 
+#include "cece/cece_logger.hpp"
+
 namespace cece::io {
 
 static std::vector<double> read_coordinate_array(amio_dataset_handle dataset, const std::string& name, bool is_radian, bool wrap_lon,
@@ -396,8 +398,8 @@ bool coordinates_equal(double source, double target, bool longitude, double tole
 
 }  // namespace
 
-bool same_grid_coordinates(int nx, int ny, const std::vector<double>& source_lons, const std::vector<double>& source_lats,
-                           const std::vector<double>& target_lons, const std::vector<double>& target_lats, double tolerance) {
+bool same_spherical_grid_coordinates(int nx, int ny, const std::vector<double>& source_lons, const std::vector<double>& source_lats,
+                                     const std::vector<double>& target_lons, const std::vector<double>& target_lats, double tolerance) {
     if (nx <= 0 || ny <= 0 || tolerance < 0.0) {
         return false;
     }
@@ -551,11 +553,12 @@ bool build_regrid_plan(amio_dataset_handle read_dataset, int nx, int ny, const s
 
     if (map_algo == "passthrough") {
         if (nx != plan.file_nx || ny != plan.file_ny) {
-            std::cerr << "[DRIVER ERROR] passthrough regridding requested but grid dimensions do not match! "
-                      << "Source grid: " << plan.file_nx << "x" << plan.file_ny << ", Target grid: " << nx << "x" << ny << std::endl;
+            CECE_LOG_ERROR(
+                "[DRIVER ERROR] passthrough regridding requested but grid dimensions do not match! Source grid: " + std::to_string(plan.file_nx) +
+                "x" + std::to_string(plan.file_ny) + ", Target grid: " + std::to_string(nx) + "x" + std::to_string(ny));
             throw std::runtime_error("passthrough regridding dimension mismatch");
         }
-        if (!same_grid_coordinates(nx, ny, src_lons, src_lats, target_lons, target_lats)) {
+        if (!same_spherical_grid_coordinates(nx, ny, src_lons, src_lats, target_lons, target_lats)) {
             throw std::runtime_error("passthrough regridding coordinate mismatch");
         }
 
@@ -647,7 +650,7 @@ bool apply_regrid_plan(const RegridPlan& plan, size_t time_offset, bool is_float
 
     if (plan.identity) {
         if (file_nx != plan.file_nx || file_ny != plan.file_ny || nx != file_nx || plan.j0 < 0 || plan.j1 > file_ny) {
-            std::cerr << "[DRIVER ERROR] identity-plan field dimensions do not match the verified source grid" << std::endl;
+            CECE_LOG_ERROR("[DRIVER ERROR] identity-plan field dimensions do not match the verified source grid");
             return false;
         }
         const float* float_data = static_cast<const float*>(view_data);

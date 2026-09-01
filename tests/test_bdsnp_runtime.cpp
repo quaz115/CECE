@@ -254,10 +254,20 @@ TEST_F(BdsnpRuntimeTest, RemovedVersionPinnedSelectorIsRejected) {
 }
 
 TEST_F(BdsnpRuntimeTest, MissingAndMalformedProductionContractFailsLoudly) {
-    AddOutputs();
     BdsnpScheme missing_scheme;
     missing_scheme.Initialize(CanonicalConfig(false), nullptr);
-    EXPECT_THROW(missing_scheme.Run(import_state, export_state), std::runtime_error);
+    try {
+        missing_scheme.Run(import_state, export_state);
+        FAIL() << "Expected missing canonical BDSNP fields to fail";
+    } catch (const std::runtime_error& error) {
+        const std::string message = error.what();
+        for (const char* name :
+             {"surface_temperature", "soil_moisture", "soilnox_land_fractions", "soilnox_arid_fraction", "soilnox_nonarid_fraction",
+              "leaf_area_index", "soilnox_canopy_nox", "wind_speed_squared", "solar_zenith_cosine", "soil_fertilizer", "deposited_nitrogen",
+              "soilnox_pulse_factor", "soil_nox_emissions", "soil_nox_fertilizer_emissions"}) {
+            EXPECT_NE(message.find(name), std::string::npos) << "missing field name: " << name;
+        }
+    }
 
     const GoldenCase valid = {"shape_base", false, 6, 20.0, 0.2, 0.0, 1.0, 0.0, 0.0, 9.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
     auto expect_shape_failure = [this, &valid](const auto& mutate) {
