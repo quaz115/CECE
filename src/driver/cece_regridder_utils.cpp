@@ -564,7 +564,9 @@ bool build_regrid_plan(amio_dataset_handle read_dataset, int nx, int ny, const s
 
         plan.identity = true;
         plan.built = true;
-        std::cout << "[DRIVER] passthrough verified identical source and target coordinates; skipping AXIS regridding" << std::endl;
+        CECE_LOG_INFO(
+            "[DRIVER] passthrough verified identical source and target coordinates; "
+            "skipping AXIS regridding");
         return true;
     }
 
